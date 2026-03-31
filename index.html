@@ -123,16 +123,6 @@
     <h1>Monte Carlo Asian Option Pricing</h1>
     <p>Risk-neutral measure &nbsp;·&nbsp; Girsanov's theorem &nbsp;·&nbsp; Change of numeraire &nbsp;·&nbsp; <span id="dataLabel">Loading live data…</span></p>
   </div>
-  <!-- DEBUG PANEL -->
-  <div id="debugPanel" style="background:#0f172a;border-radius:10px;padding:14px 18px;margin-bottom:14px;font-family:monospace;font-size:12px;color:#94a3b8">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <span style="color:#60a5fa;font-weight:700;font-size:13px">🔍 API 診斷面板</span>
-      <button onclick="document.getElementById('debugPanel').style.display='none'" style="background:#334155;border:none;color:#94a3b8;padding:2px 10px;border-radius:6px;cursor:pointer;font-size:11px">隱藏</button>
-    </div>
-    <div id="debugLog" style="display:flex;flex-direction:column;gap:5px">
-      <span style="color:#475569">等待 API 回應...</span>
-    </div>
-  </div>
   <div style="margin-bottom:6px;font-size:12px;color:#94a3b8;font-family:sans-serif;font-weight:600;letter-spacing:0.05em">SELECT UNDERLYING ASSET</div>
   <div class="asset-grid" id="assetGrid"></div>
   <div class="tabs" id="tabBar"></div>
@@ -236,33 +226,11 @@ function getHistoryCountText(count){
   return `${count} monthly end-of-month closing prices · rolling 3-year window`;
 }
 
-function debugLog(msg, ok){
-  const log = document.getElementById('debugLog');
-  if(!log) return;
-  if(log.children.length===1 && log.children[0].style.color==="rgb(71, 85, 105)") log.innerHTML='';
-  const row = document.createElement('div');
-  row.style.cssText = 'display:flex;gap:8px;align-items:baseline;border-bottom:1px solid #1e293b;padding:3px 0';
-  row.innerHTML = `<span style="color:${ok===true?'#4ade80':ok===false?'#f87171':'#fbbf24'};flex-shrink:0">${ok===true?'✓':ok===false?'✗':'→'}</span><span style="color:#e2e8f0;flex:1">${msg}</span>`;
-  log.appendChild(row);
-}
-
 async function apiGet(params2){
   const qs=new URLSearchParams(params2).toString();
-  const label = `${params2.type} ${params2.sym||''} ${params2.res||''}`.trim();
-  debugLog(`呼叫 /api/market?type=${params2.type}&sym=${params2.sym||'-'} ...`, null);
-  try {
-    const r=await fetch(`/api/market?${qs}`);
-    if(!r.ok) { debugLog(`${label} → HTTP ${r.status} 失敗`, false); throw new Error(`/api/market ${r.status}`); }
-    const data = await r.json();
-    if(data.error) { debugLog(`${label} → API錯誤: ${data.error}`, false); return data; }
-    if(data.s === "no_data") { debugLog(`${label} → no_data (endpoint或時間範圍不支援)`, false); return data; }
-    const summary = data.c ? (Array.isArray(data.c) ? `${data.c.length}筆K線, 最後收盤=${data.c[data.c.length-1]}` : `quote c=${data.c}`) : JSON.stringify(data).slice(0,80);
-    debugLog(`${label} → ✓ ${summary}`, true);
-    return data;
-  } catch(e) {
-    debugLog(`${label} → 例外: ${e.message}`, false);
-    throw e;
-  }
+  const r=await fetch(`/api/market?${qs}`);
+  if(!r.ok) throw new Error(`/api/market ${r.status}`);
+  return r.json();
 }
 
 async function loadLiveData(){
