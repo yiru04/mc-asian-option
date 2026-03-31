@@ -211,32 +211,65 @@ async function apiGet(params2){
 async function loadLiveData(){
   try{
     const { from, to } = getRollingThreeYearRange();
+    const keys = Object.keys(DB_META);
 
-    const [sofrData,...candleArr]=await Promise.all([
-      apiGet({type:"sofr"}),
-      ...Object.values(DB_META).map(m=>apiGet({type:"candle",sym:m.finnSym,res:"M",from,to}))
-    ]);
+    // 🔥 同時抓 candle + quote
+    const requests = [
+      apiGet({ type:"sofr" }),
+      ...keys.map(k => apiGet({
+        type:"candle",
+        sym: DB_META[k].finnSym,
+        res:"M",
+        from,
+        to
+      })),
+      ...keys.map(k => apiGet({
+        type:"quote",
+        sym: DB_META[k].finnSym
+      }))
+    ];
 
-    if(sofrData?.data?.length) params.r=sofrData.data[sofrData.data.length-1].value/100;
+    const all = await Promise.all(requests);
 
-    MONTHS=candleArr[0].t.map(tsToLabel);
+    const sofrData = all[0];
+    const candleArr = all.slice(1, 1 + keys.length);
+    const quoteArr = all.slice(1 + keys.length);
 
-    const keys=Object.keys(DB_META);
-    keys.forEach((key,i)=>{
-      const d=candleArr[i];
-      if(!d||d.s==="no_data"||!d.c) throw new Error(`no data: ${key}`);
-      DB[key]={...DB_META[key],hist:d.c.map(Number)};
+    if (sofrData?.data?.length) {
+      params.r = sofrData.data.at(-1).value / 100;
+    }
+
+    MONTHS = candleArr[0].t.map(tsToLabel);
+
+    keys.forEach((key, i) => {
+      const hist = candleArr[i].c.map(Number);
+      const lastMonthly = hist.at(-1);
+
+      const live =
+        (quoteArr[i]?.c && quoteArr[i].c > 0)
+          ? quoteArr[i].c
+          : lastMonthly;
+
+      DB[key] = {
+        ...DB_META[key],
+        hist,
+        livePrice: live,        // ⭐ 新增
+        lastMonthlyClose: lastMonthly
+      };
+
       setDK(key);
     });
 
-    params.K=DB[sel].dK;
-    const sl=MONTHS[0], el=MONTHS[MONTHS.length-1];
-    document.getElementById("dataLabel").innerHTML=
-      `<span class="live-badge"><span class="live-dot"></span>Live</span> &nbsp;Finnhub &nbsp;·&nbsp; ${sl} – ${el}`;
+    params.K = DB[sel].dK;
+
+    document.getElementById("dataLabel").innerHTML =
+      `<span class="live-badge"><span class="live-dot"></span>Live</span> 即時價格 + 月資料`;
+
     hideOverlay();
     render();
+
   }catch(err){
-    console.warn("Live fetch failed, using fallback:",err.message);
+    console.warn(err);
     useFallback();
   }
 }
