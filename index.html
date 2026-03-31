@@ -123,6 +123,16 @@
     <h1>Monte Carlo Asian Option Pricing</h1>
     <p>Risk-neutral measure &nbsp;·&nbsp; Girsanov's theorem &nbsp;·&nbsp; Change of numeraire &nbsp;·&nbsp; <span id="dataLabel">Loading live data…</span></p>
   </div>
+  <!-- DEBUG PANEL -->
+  <div id="debugPanel" style="background:#0f172a;border-radius:10px;padding:14px 18px;margin-bottom:14px;font-family:monospace;font-size:12px;color:#94a3b8">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span style="color:#60a5fa;font-weight:700;font-size:13px">🔍 API 診斷面板</span>
+      <button onclick="document.getElementById('debugPanel').style.display='none'" style="background:#334155;border:none;color:#94a3b8;padding:2px 10px;border-radius:6px;cursor:pointer;font-size:11px">隱藏</button>
+    </div>
+    <div id="debugLog" style="display:flex;flex-direction:column;gap:5px">
+      <span style="color:#475569">等待 API 回應...</span>
+    </div>
+  </div>
   <div style="margin-bottom:6px;font-size:12px;color:#94a3b8;font-family:sans-serif;font-weight:600;letter-spacing:0.05em">SELECT UNDERLYING ASSET</div>
   <div class="asset-grid" id="assetGrid"></div>
   <div class="tabs" id="tabBar"></div>
@@ -153,13 +163,13 @@ const DB_META = {
 
 const FB = {
   sofr:0.0433,
-  months:["Apr '22","May '22","Jun '22","Jul '22","Aug '22","Sep '22","Oct '22","Nov '22","Dec '22","Jan '23","Feb '23","Mar '23","Apr '23","May '23","Jun '23","Jul '23","Aug '23","Sep '23","Oct '23","Nov '23","Dec '23","Jan '24","Feb '24","Mar '24","Apr '24","May '24","Jun '24","Jul '24","Aug '24","Sep '24","Oct '24","Nov '24","Dec '24","Jan '25","Feb '25","Mar '25"],
-  AAPL:[157.65,148.84,136.72,162.51,174.78,150.43,138.38,148.03,129.93,143.96,147.92,160.77,169.68,177.82,189.59,192.46,187.87,171.21,170.77,189.97,192.53,184.40,182.32,171.21,170.77,192.35,210.62,218.54,226.51,233.00,225.91,237.33,249.79,237.59,241.84,223.19],
-  SPY:[411.55,387.35,360.40,393.57,411.52,362.79,378.43,394.26,380.35,408.47,401.52,411.49,415.39,418.87,439.81,454.78,447.29,427.17,418.45,454.96,471.05,488.10,506.08,521.41,505.65,527.78,545.81,554.34,560.72,572.62,578.79,601.85,592.37,581.06,596.11,562.27],
-  GLD:[174.81,168.24,162.62,165.48,164.12,154.19,155.88,159.14,157.84,167.21,165.22,178.10,181.99,183.60,183.83,187.19,183.87,177.14,179.01,185.72,188.54,196.22,190.14,202.72,210.52,214.38,218.64,224.05,239.18,242.48,253.43,258.24,256.97,271.23,280.50,292.60],
-  NVDA:[20.24,16.44,13.88,17.72,18.82,12.88,13.72,16.69,14.61,18.35,23.25,27.70,27.62,39.89,42.32,44.01,49.26,43.45,46.52,49.52,49.52,61.35,78.83,87.53,76.24,104.45,123.54,117.93,125.61,121.44,139.56,148.88,134.25,118.73,130.97,110.35],
-  BTC:[37732,29788,20165,23315,20050,19431,20492,17168,16547,23122,23446,28475,29244,27219,30478,29227,25933,26967,34518,37749,42265,43110,51812,71333,60623,67565,60995,66013,59120,63301,72384,97337,93429,102492,84297,82534],
-  EURUSD:[1.0548,1.0736,1.0483,1.0222,1.0006,0.9803,0.9879,1.0334,1.0705,1.0865,1.0598,1.0833,1.0990,1.0703,1.0919,1.1018,1.0802,1.0573,1.0565,1.0939,1.1050,1.0849,1.0850,1.0804,1.0716,1.0855,1.0714,1.0841,1.1048,1.1165,1.0872,1.0538,1.0367,1.0302,1.0382,1.0792]
+  months:["Apr '22","May '22","Jun '22","Jul '22","Aug '22","Sep '22","Oct '22","Nov '22","Dec '22","Jan '23","Feb '23","Mar '23","Apr '23","May '23","Jun '23","Jul '23","Aug '23","Sep '23","Oct '23","Nov '23","Dec '23","Jan '24","Feb '24","Mar '24","Apr '24","May '24","Jun '24","Jul '24","Aug '24","Sep '24","Oct '24","Nov '24","Dec '24","Jan '25","Feb '25","Mar '25","Apr '25","May '25","Jun '25","Jul '25","Aug '25","Sep '25","Oct '25","Nov '25","Dec '25","Jan '26","Feb '26"],
+  AAPL:[157.65,148.84,136.72,162.51,174.78,150.43,138.38,148.03,129.93,143.96,147.92,160.77,169.68,177.82,189.59,192.46,187.87,171.21,170.77,189.97,192.53,184.40,182.32,171.21,170.77,192.35,210.62,218.54,226.51,233.00,225.91,237.33,249.79,237.59,241.84,223.19,212.50,207.15,210.62,218.54,226.51,226.37,230.76,237.33,243.04,229.87,227.63],
+  SPY:[411.55,387.35,360.40,393.57,411.52,362.79,378.43,394.26,380.35,408.47,401.52,411.49,415.39,418.87,439.81,454.78,447.29,427.17,418.45,454.96,471.05,488.10,506.08,521.41,505.65,527.78,545.81,554.34,560.72,572.62,578.79,601.85,592.37,581.06,596.11,562.27,536.10,579.91,548.72,554.34,562.06,564.27,574.55,602.18,592.61,589.32,597.25],
+  GLD:[174.81,168.24,162.62,165.48,164.12,154.19,155.88,159.14,157.84,167.21,165.22,178.10,181.99,183.60,183.83,187.19,183.87,177.14,179.01,185.72,188.54,196.22,190.14,202.72,210.52,214.38,218.64,224.05,239.18,242.48,253.43,258.24,256.97,271.23,280.50,292.60,305.40,310.85,299.17,300.54,311.62,318.85,331.44,336.92,343.70,355.62,281.03],
+  NVDA:[20.24,16.44,13.88,17.72,18.82,12.88,13.72,16.69,14.61,18.35,23.25,27.70,27.62,39.89,42.32,44.01,49.26,43.45,46.52,49.52,49.52,61.35,78.83,87.53,76.24,104.45,123.54,117.93,125.61,121.44,139.56,148.88,134.25,118.73,130.97,110.35,96.32,109.02,131.38,117.93,124.92,121.35,141.55,138.85,134.25,128.42,127.25],
+  BTC:[37732,29788,20165,23315,20050,19431,20492,17168,16547,23122,23446,28475,29244,27219,30478,29227,25933,26967,34518,37749,42265,43110,51812,71333,60623,67565,60995,66013,59120,63301,72384,97337,93429,102492,84297,82534,94310,103150,107205,117790,106960,63150,69432,97980,97695,105013,85200],
+  EURUSD:[1.0548,1.0736,1.0483,1.0222,1.0006,0.9803,0.9879,1.0334,1.0705,1.0865,1.0598,1.0833,1.0990,1.0703,1.0919,1.1018,1.0802,1.0573,1.0565,1.0939,1.1050,1.0849,1.0850,1.0804,1.0716,1.0855,1.0714,1.0841,1.1048,1.1165,1.0872,1.0538,1.0367,1.0302,1.0382,1.0792,1.1333,1.1342,1.0845,1.1005,1.1047,1.1138,1.0868,1.0559,1.0352,1.0266,1.0406]
 };
 
 let DB={}, MONTHS=[];
@@ -190,122 +200,174 @@ function hideOverlay(){
 function getRollingThreeYearRange(){
   const today = new Date();
   const toDate = new Date(today);
+  // go back 3 years + 1 extra month buffer so we always have a full first month
   const fromDate = new Date(today);
   fromDate.setFullYear(fromDate.getFullYear() - 3);
-
+  fromDate.setMonth(fromDate.getMonth() - 1);
+  fromDate.setDate(1);
   return {
     from: Math.floor(fromDate.getTime() / 1000),
-    to: Math.floor(toDate.getTime() / 1000),
-    fromDate,
-    toDate
+    to:   Math.floor(toDate.getTime()   / 1000)
   };
+}
+
+// Resample an array of {t (unix), c (close)} daily bars into monthly end-of-month closes.
+// Returns [{label:"Mon 'YY", close:Number}] sorted ascending.
+function resampleMonthly(ts, closes){
+  const map = new Map(); // key = "YYYY-MM"
+  for(let i = 0; i < ts.length; i++){
+    const d   = new Date(ts[i] * 1000);
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+    // keep overwriting — last bar in the month wins
+    map.set(key, { ts: ts[i], close: closes[i] });
+  }
+  const months = [...map.entries()]
+    .sort((a,b) => a[0].localeCompare(b[0]))
+    .map(([key, v]) => {
+      const [yr, mo] = key.split('-').map(Number);
+      const d = new Date(Date.UTC(yr, mo-1, 1));
+      const label = d.toLocaleString('en-US',{month:'short',timeZone:'UTC'}) + " '" + String(yr).slice(2);
+      return { label, close: v.close };
+    });
+  return months;
 }
 
 function getHistoryCountText(count){
   return `${count} monthly end-of-month closing prices · rolling 3-year window`;
 }
 
+function debugLog(msg, ok){
+  const log = document.getElementById('debugLog');
+  if(!log) return;
+  if(log.children.length===1 && log.children[0].style.color==="rgb(71, 85, 105)") log.innerHTML='';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;align-items:baseline;border-bottom:1px solid #1e293b;padding:3px 0';
+  row.innerHTML = `<span style="color:${ok===true?'#4ade80':ok===false?'#f87171':'#fbbf24'};flex-shrink:0">${ok===true?'✓':ok===false?'✗':'→'}</span><span style="color:#e2e8f0;flex:1">${msg}</span>`;
+  log.appendChild(row);
+}
+
 async function apiGet(params2){
   const qs=new URLSearchParams(params2).toString();
-  const r=await fetch(`/api/market?${qs}`);
-  if(!r.ok) throw new Error(`/api/market ${r.status}`);
-  return r.json();
+  const label = `${params2.type} ${params2.sym||''} ${params2.res||''}`.trim();
+  debugLog(`呼叫 /api/market?type=${params2.type}&sym=${params2.sym||'-'} ...`, null);
+  try {
+    const r=await fetch(`/api/market?${qs}`);
+    if(!r.ok) { debugLog(`${label} → HTTP ${r.status} 失敗`, false); throw new Error(`/api/market ${r.status}`); }
+    const data = await r.json();
+    if(data.error) { debugLog(`${label} → API錯誤: ${data.error}`, false); return data; }
+    if(data.s === "no_data") { debugLog(`${label} → no_data (endpoint或時間範圍不支援)`, false); return data; }
+    const summary = data.c ? (Array.isArray(data.c) ? `${data.c.length}筆K線, 最後收盤=${data.c[data.c.length-1]}` : `quote c=${data.c}`) : JSON.stringify(data).slice(0,80);
+    debugLog(`${label} → ✓ ${summary}`, true);
+    return data;
+  } catch(e) {
+    debugLog(`${label} → 例外: ${e.message}`, false);
+    throw e;
+  }
 }
 
 async function loadLiveData(){
+  const keys = Object.keys(DB_META);
+  let candleOk = false;
+
+  // ── Step 1: Fetch daily candle history and resample to monthly ────────────
+  // Using resolution=D (daily) because Finnhub free tier supports it for all asset types.
+  // We resample to end-of-month closes ourselves.
   try{
     const { from, to } = getRollingThreeYearRange();
-    const keys = Object.keys(DB_META);
 
-    const requests = [
-      apiGet({ type:"sofr" }),
-      ...keys.map(k => apiGet({
-        type:"candle",
-        sym: DB_META[k].finnSym,
-        res:"M",
+    const candleResults = await Promise.all(
+      keys.map(k => apiGet({
+        type: "candle",
+        sym:  DB_META[k].finnSym,
+        res:  "D",
         from,
         to
-      })),
-      ...keys.map(k => apiGet({
-        type:"quote",
-        sym: DB_META[k].finnSym
-      }))
-    ];
+      }).catch(() => null))
+    );
 
-    const all = await Promise.all(requests);
+    // Validate first result
+    const first = candleResults[0];
+    if(!first || !Array.isArray(first.t) || first.t.length < 30)
+      throw new Error("daily candle too short or missing");
 
-    const sofrData = all[0];
-    const candleArr = all.slice(1, 1 + keys.length);
-    const quoteArr = all.slice(1 + keys.length);
-
-    if (sofrData?.data?.length) params.r = sofrData.data[sofrData.data.length-1].value/100;
-
-    if (!candleArr[0] || !Array.isArray(candleArr[0].t) || !candleArr[0].t.length) {
-      throw new Error("No candle timeline returned");
-    }
-
-    MONTHS = candleArr[0].t.map(tsToLabel);
+    // Build a shared MONTHS axis from the first asset (stocks always trade)
+    const referenceMonths = resampleMonthly(first.t, first.c);
+    MONTHS = referenceMonths.map(m => m.label);
 
     keys.forEach((key, i) => {
-      const d = candleArr[i];
-      if (!d || d.s === "no_data" || !d.c || !d.c.length) {
-        throw new Error(`no candle data: ${key}`);
+      const d = candleResults[i];
+      let hist;
+      if(d && d.s !== "no_data" && Array.isArray(d.t) && d.t.length >= 30){
+        const monthly = resampleMonthly(d.t, d.c);
+        hist = monthly.map(m => m.close);
+        // Align length to MONTHS (trim or pad with null-safe fallback)
+        while(hist.length < MONTHS.length) hist.unshift(hist[0]);
+        hist = hist.slice(-MONTHS.length);
+      } else {
+        // Asset-specific candle failed — fall back to static history for this asset
+        console.warn(`Candle failed for ${key}, using static fallback`);
+        hist = FB[key].slice(-MONTHS.length);
+        if(hist.length < MONTHS.length) hist = FB[key];
       }
-
-      const hist = d.c.map(Number);
       const lastMonthlyClose = hist[hist.length - 1];
-      const q = quoteArr[i];
-
-      const livePrice =
-        (q && Number.isFinite(Number(q.c)) && Number(q.c) > 0)
-          ? Number(q.c)
-          : lastMonthlyClose;
-
       DB[key] = {
         ...DB_META[key],
         hist,
         lastMonthlyClose,
-        livePrice,
-        asOfPrice: livePrice
+        livePrice:  lastMonthlyClose,  // temp; overwritten by quote below
+        asOfPrice:  lastMonthlyClose
       };
-
-      setDK(key);
     });
+    candleOk = true;
 
-    params.K=DB[sel].dK;
-    const sl=MONTHS[0], el=MONTHS[MONTHS.length-1];
-    document.getElementById("dataLabel").innerHTML=
-      `<span class="live-badge"><span class="live-dot"></span>Live</span> &nbsp;Finnhub &nbsp;·&nbsp; Monthly history ${sl} – ${el} &nbsp;|&nbsp; Spot updated today`;
-    hideOverlay();
-    render();
-  }catch(err){
-    console.warn("Live fetch failed, using fallback:",err.message);
-    useFallback();
+  } catch(err){
+    console.warn("Candle fetch failed, using static fallback:", err.message);
+    // Trim fallback to last 36 months so it always shows ~3 years from today
+    const fbAll = FB.months;
+    const fbTrim = fbAll.slice(-36);
+    MONTHS = fbTrim;
+    keys.forEach(key => {
+      const hist = FB[key].slice(-36);
+      const lastMonthlyClose = hist[hist.length - 1];
+      DB[key] = { ...DB_META[key], hist, lastMonthlyClose, livePrice: lastMonthlyClose, asOfPrice: lastMonthlyClose };
+    });
   }
-}
 
-function useFallback(){
-  MONTHS=FB.months;
-  params.r=FB.sofr;
-  ["AAPL","SPY","GLD","NVDA","BTC","EURUSD"].forEach(k=>{
-    const hist = FB[k];
-    const lastMonthlyClose = hist[hist.length-1];
-    DB[k]={
-      ...DB_META[k],
-      hist,
-      lastMonthlyClose,
-      livePrice:lastMonthlyClose,
-      asOfPrice:lastMonthlyClose
-    };
-    setDK(k);
-  });
-  params.K=DB[sel].dK;
-  const el=MONTHS[MONTHS.length-1];
-  document.getElementById("dataLabel").innerHTML=
-    `<span class="off-badge">Offline data</span> &nbsp;Fallback static dataset &nbsp;·&nbsp; ${MONTHS[0]} – ${el}`;
+  // ── Step 2: SOFR (non-fatal) ──────────────────────────────────────────────
+  try{
+    const sofrData = await apiGet({ type:"sofr" });
+    if(sofrData?.data?.length) params.r = sofrData.data[sofrData.data.length-1].value/100;
+  } catch(e){ /* keep default */ }
+
+  // ── Step 3: Live spot quotes — always runs, each asset independent ─────────
+  await Promise.allSettled(
+    keys.map(async (key) => {
+      try{
+        const q = await apiGet({ type:"quote", sym: DB_META[key].finnSym });
+        // q.c = current price (0 if market closed), q.pc = previous close
+        const price = (Number(q?.c) > 0) ? Number(q.c) : Number(q?.pc);
+        if(Number.isFinite(price) && price > 0){
+          DB[key].livePrice = price;
+          DB[key].asOfPrice = price;
+        }
+      } catch(e){ /* keep last monthly close as fallback */ }
+    })
+  );
+
+  // ── Step 4: Finalise and render ───────────────────────────────────────────
+  keys.forEach(key => setDK(key));
+  params.K = DB[sel].dK;
+
+  const sl = MONTHS[0], el2 = MONTHS[MONTHS.length-1];
+  document.getElementById("dataLabel").innerHTML = candleOk
+    ? `<span class="live-badge"><span class="live-dot"></span>Live</span> &nbsp;Finnhub &nbsp;·&nbsp; Monthly history ${sl} – ${el2} &nbsp;|&nbsp; Spot updated just now`
+    : `<span class="off-badge">Offline history</span> &nbsp;Static ${sl} – ${el2} &nbsp;|&nbsp; <span class="live-badge"><span class="live-dot"></span>Live spot</span> from Finnhub`;
+
   hideOverlay();
   render();
 }
+
+
 
 function randn(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
 function cal(hist){
