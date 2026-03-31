@@ -173,17 +173,20 @@ function tsToLabel(ts){
   const d=new Date(ts*1000);
   return d.toLocaleString('en-US',{month:'short',year:'2-digit'}).replace(' ','\'').replace(', '," '");
 }
+
 function setDK(key){
-  const s0=DB[key].hist[DB[key].hist.length-1];
+  const s0 = DB[key].livePrice ?? DB[key].hist[DB[key].hist.length-1];
   if(key==="BTC")DB[key].dK=Math.round(s0/5000)*5000;
   else if(key==="EURUSD")DB[key].dK=parseFloat((Math.round(s0*20)/20).toFixed(2));
   else DB[key].dK=Math.round(s0/10)*10;
 }
+
 function hideOverlay(){
   const ol=document.getElementById("loadingOverlay");
   ol.classList.add("hidden");
   setTimeout(()=>ol.style.display="none",450);
 }
+
 function getRollingThreeYearRange(){
   const today = new Date();
   const toDate = new Date(today);
@@ -197,6 +200,7 @@ function getRollingThreeYearRange(){
     toDate
   };
 }
+
 function getHistoryCountText(count){
   return `${count} monthly end-of-month closing prices · rolling 3-year window`;
 }
@@ -213,7 +217,6 @@ async function loadLiveData(){
     const { from, to } = getRollingThreeYearRange();
     const keys = Object.keys(DB_META);
 
-    // 🔥 同時抓 candle + quote
     const requests = [
       apiGet({ type:"sofr" }),
       ...keys.map(k => apiGet({
@@ -235,41 +238,48 @@ async function loadLiveData(){
     const candleArr = all.slice(1, 1 + keys.length);
     const quoteArr = all.slice(1 + keys.length);
 
-    if (sofrData?.data?.length) {
-      params.r = sofrData.data.at(-1).value / 100;
+    if (sofrData?.data?.length) params.r = sofrData.data[sofrData.data.length-1].value/100;
+
+    if (!candleArr[0] || !Array.isArray(candleArr[0].t) || !candleArr[0].t.length) {
+      throw new Error("No candle timeline returned");
     }
 
     MONTHS = candleArr[0].t.map(tsToLabel);
 
     keys.forEach((key, i) => {
-      const hist = candleArr[i].c.map(Number);
-      const lastMonthly = hist.at(-1);
+      const d = candleArr[i];
+      if (!d || d.s === "no_data" || !d.c || !d.c.length) {
+        throw new Error(`no candle data: ${key}`);
+      }
 
-      const live =
-        (quoteArr[i]?.c && quoteArr[i].c > 0)
-          ? quoteArr[i].c
-          : lastMonthly;
+      const hist = d.c.map(Number);
+      const lastMonthlyClose = hist[hist.length - 1];
+      const q = quoteArr[i];
+
+      const livePrice =
+        (q && Number.isFinite(Number(q.c)) && Number(q.c) > 0)
+          ? Number(q.c)
+          : lastMonthlyClose;
 
       DB[key] = {
         ...DB_META[key],
         hist,
-        livePrice: live,        // ⭐ 新增
-        lastMonthlyClose: lastMonthly
+        lastMonthlyClose,
+        livePrice,
+        asOfPrice: livePrice
       };
 
       setDK(key);
     });
 
-    params.K = DB[sel].dK;
-
-    document.getElementById("dataLabel").innerHTML =
-      `<span class="live-badge"><span class="live-dot"></span>Live</span> 即時價格 + 月資料`;
-
+    params.K=DB[sel].dK;
+    const sl=MONTHS[0], el=MONTHS[MONTHS.length-1];
+    document.getElementById("dataLabel").innerHTML=
+      `<span class="live-badge"><span class="live-dot"></span>Live</span> &nbsp;Finnhub &nbsp;·&nbsp; Monthly history ${sl} – ${el} &nbsp;|&nbsp; Spot updated today`;
     hideOverlay();
     render();
-
   }catch(err){
-    console.warn(err);
+    console.warn("Live fetch failed, using fallback:",err.message);
     useFallback();
   }
 }
@@ -278,7 +288,15 @@ function useFallback(){
   MONTHS=FB.months;
   params.r=FB.sofr;
   ["AAPL","SPY","GLD","NVDA","BTC","EURUSD"].forEach(k=>{
-    DB[k]={...DB_META[k],hist:FB[k]};
+    const hist = FB[k];
+    const lastMonthlyClose = hist[hist.length-1];
+    DB[k]={
+      ...DB_META[k],
+      hist,
+      lastMonthlyClose,
+      livePrice:lastMonthlyClose,
+      asOfPrice:lastMonthlyClose
+    };
     setDK(k);
   });
   params.K=DB[sel].dK;
@@ -362,7 +380,7 @@ function runMC(){
   if(running)return;
   running=true;renderSim();
   setTimeout(()=>{
-    const a=DB[sel],c=cal(a.hist),S0=a.hist[a.hist.length-1];
+    const a=DB[sel],c=cal(a.hist),S0=a.livePrice ?? a.hist[a.hist.length-1];
     const{K,T,nSteps,r}=params,σ=c.sigma,dt=T/nSteps,sqDt=Math.sqrt(dt),drift=r-0.5*σ*σ;
     const NS=14,skip=Math.max(1,Math.floor(nSteps/60));
     const rawP=Array.from({length:NS},()=>[{t:0,S:S0}]);
@@ -397,7 +415,7 @@ function renderAssets(){
   const g=document.getElementById("assetGrid");g.innerHTML="";
   for(const[key,a]of Object.entries(DB)){
     const ac=AC[key],isSel=sel===key;
-    const c=cal(a.hist),s0=a.hist[a.hist.length-1];
+    const c=cal(a.hist),s0=a.livePrice ?? a.hist[a.hist.length-1];
     const b=el("button",{className:"asset-btn",
       style:{border:`2px solid ${isSel?ac:"#e2e8f0"}`,background:isSel?`${ac}15`:"#fff",
         boxShadow:isSel?`0 0 0 3px ${ac}30`:"none"},
@@ -426,8 +444,7 @@ function renderTabs(){
 }
 
 function renderData(){
-  const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.hist[a.hist.length-1];
-  const θ=(c.mu-params.r)/c.sigma;
+  const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.livePrice ?? a.hist[a.hist.length-1];
   const frag=document.createDocumentFragment();
   const startLabel=MONTHS[0],endLabel=MONTHS[MONTHS.length-1];
   const historyCount = a.hist.length;
@@ -438,9 +455,14 @@ function renderData(){
     <div>
       <div style="font-size:16px;font-weight:800;color:${ac};font-family:sans-serif">${a.label} &nbsp;·&nbsp; ${a.name}
         <span style="margin-left:10px;font-size:12px;font-weight:500;color:#94a3b8;background:#f1f5f9;padding:2px 8px;border-radius:20px">${a.cls}</span>
-        <span class="live-badge"><span class="live-dot"></span>Live · Finnhub</span>
+        <span class="live-badge"><span class="live-dot"></span>Live</span>
       </div>
       <div style="font-size:13px;color:#334155;margin-top:4px;line-height:1.6">${a.desc}</div>
+      <div style="font-size:12px;color:#0f172a;margin-top:6px;font-family:monospace">
+        Spot now: <strong>${fmtP(sel, a.livePrice ?? a.hist[a.hist.length - 1])}</strong>
+        &nbsp; | &nbsp;
+        Last monthly close: <strong>${fmtP(sel, a.lastMonthlyClose ?? a.hist[a.hist.length - 1])}</strong>
+      </div>
       <div style="font-size:12px;color:#94a3b8;margin-top:4px">${a.note}</div>
     </div></div>`;
   frag.appendChild(bn);
@@ -457,11 +479,12 @@ function renderData(){
   cc.appendChild(el("h3",{className:"card-title"},"Calibrated Parameters"));
   const tbl=el("table",{className:"calib-table"});const tb=el("tbody");
   [
-    {k:`${SS}<sub>0</sub>`,v:fmtP(sel,S0),sub:`Last close (${endLabel})`,c:"#16a34a"},
+    {k:`${SS}<sub>0</sub>`,v:fmtP(sel,S0),sub:"Live spot used for pricing",c:"#16a34a"},
+    {k:"Last monthly close",v:fmtP(sel,a.lastMonthlyClose ?? a.hist[a.hist.length-1]),sub:`Monthly chart endpoint (${endLabel})`,c:"#475569"},
     {k:RR,v:`${(params.r*100).toFixed(2)}%`,sub:"SOFR risk-free rate",c:"#065f46"},
     {k:MU,v:`${(c.mu*100).toFixed(2)}% / yr`,sub:"Annualized physical drift",c:"#0369a1"},
     {k:SIG,v:`${(c.sigma*100).toFixed(2)}% / yr`,sub:"Realized annualized volatility",c:"#6d28d9"},
-    {k:`${TH} = (μ̂−r)/σ̂`,v:θ.toFixed(4),sub:"Girsanov kernel (Sharpe ratio)",c:"#be123c"},
+    {k:`${TH} = (μ̂−r)/σ̂`,v:((c.mu-params.r)/c.sigma).toFixed(4),sub:"Girsanov kernel (Sharpe ratio)",c:"#be123c"},
     {k:"Monthly obs.",v:`${historyCount} mo`,sub:`${startLabel} – ${endLabel}`,c:"#334155"},
   ].forEach(({k,v,sub,c:col})=>{
     const tr=el("tr");
@@ -523,7 +546,7 @@ function renderData(){
 }
 
 function renderTheory(){
-  const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.hist[a.hist.length-1];
+  const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.livePrice ?? a.hist[a.hist.length-1];
   const θ=(c.mu-params.r)/c.sigma;
   const μ=(c.mu*100).toFixed(2),σ=(c.sigma*100).toFixed(2),r=(params.r*100).toFixed(2);
   const frag=document.createDocumentFragment();
@@ -643,7 +666,7 @@ function renderTheory(){
   const ct=document.getElementById("content");ct.innerHTML="";ct.appendChild(frag);
 
   requestAnimationFrame(()=>{
-    const a2=DB[sel],c2=cal(a2.hist),S0_2=a2.hist[a2.hist.length-1];
+    const a2=DB[sel],c2=cal(a2.hist),S0_2=a2.livePrice ?? a2.hist[a2.hist.length-1];
     const T2=params.T,n2=80,dt2=T2/n2,sqDt2=Math.sqrt(dt2),NS2=10;
     const Zs=Array.from({length:NS2},()=>Array.from({length:n2},()=>randn()));
     function makePaths(drift){
@@ -681,7 +704,7 @@ function renderTheory(){
 }
 
 function renderSim(){
-  const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.hist[a.hist.length-1];
+  const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.livePrice ?? a.hist[a.hist.length-1];
   const θ=(c.mu-params.r)/c.sigma;
   const endLabel=MONTHS[MONTHS.length-1];
   const historyCount = a.hist.length;
@@ -690,11 +713,11 @@ function renderSim(){
   const strip=el("div",{className:"cal-strip",style:{background:`${ac}0d`,border:`1px solid ${ac}30`}});
   strip.innerHTML=`<h3 style="font-size:14px;font-weight:700;color:${ac};font-family:sans-serif;margin-bottom:10px">${a.emoji} ${a.label} · Calibrated Parameters (locked — used in MC)</h3>`;
   const sg=el("div",{className:"cal-grid"});
-  [{sym:`${SS}<sub>0</sub>`,val:fmtP(sel,S0),sub:"Current price"},
+  [{sym:`${SS}<sub>0</sub>`,val:fmtP(sel,S0),sub:"Live spot"},
+   {sym:"M close",val:fmtP(sel,a.lastMonthlyClose ?? a.hist[a.hist.length-1]),sub:"Last monthly close"},
    {sym:SIG,val:`${(c.sigma*100).toFixed(2)}%`,sub:"Realized volatility"},
    {sym:MU,val:`${(c.mu*100).toFixed(2)}%`,sub:"Physical drift"},
    {sym:RR,val:`${(params.r*100).toFixed(2)}%`,sub:"Risk-free rate"},
-   {sym:TH,val:θ.toFixed(4),sub:"Girsanov kernel"},
   ].forEach(({sym,val,sub})=>{
     const ci=el("div",{className:"cal-item",style:{border:`1px solid ${ac}30`}});
     ci.innerHTML=`<div class="cal-sym">${sym}</div>
@@ -775,7 +798,8 @@ function renderSim(){
     sc.appendChild(el("h3",{className:"card-title",style:{marginBottom:"14px"}},
       `${a.emoji} ${a.label} — Full Pricing Chain`));
     const stbl=el("table",{className:"sum-table"});const stb=el("tbody");
-    [["Underlying",`${a.emoji} ${a.label} (${a.name}) · S₀ = ${fmtP(R.key,R.S0)} (${endLabel})`],
+    [["Underlying",`${a.emoji} ${a.label} (${a.name}) · S₀ = ${fmtP(R.key,R.S0)} (live spot)`],
+     ["Monthly chart endpoint",`${fmtP(R.key,a.lastMonthlyClose ?? a.hist[a.hist.length-1])} (${endLabel})`],
      ["Derivative","Arithmetic Asian call, path-dependent, no closed-form solution"],
      [`${MU} Physical drift`,`${μ2}%/yr <span class="iNote">(${historyCount}-month log-returns)</span>`],
      [`${SIG} Realized volatility`,`${σ2}%/yr <span class="iNote">(monthly std dev ${(c2.stdM*100).toFixed(2)}% × √12)</span>`],
