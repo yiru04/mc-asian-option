@@ -31,7 +31,6 @@
       justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0;font-family:sans-serif}
     .step-title{font-size:14.5px;font-weight:700;font-family:sans-serif}
     .step-body{font-size:13.5px;color:#334155;line-height:1.7;margin-bottom:8px}
-    /* math */
     .eq-box{margin:11px 0 4px;padding:14px 22px;background:#f8fafc;
       border:1px solid #e2e8f0;border-radius:10px;display:flex;flex-direction:column;gap:0}
     .eq-box.hl{background:#fffbeb;border-color:#fde68a}
@@ -51,7 +50,6 @@
     .cP{color:#b45309}.cQ{color:#3730a3}.cSig{color:#6d28d9}.cMu{color:#0369a1}
     .cR{color:#065f46}.cTh{color:#be123c}.cS{color:#15803d}.cB{color:#0e7490}
     .cXi{color:#9333ea}.cW{color:#78350f}.cRes{color:#1e3a5f}
-    /* layout */
     .param-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
     .param-input{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;
       font-size:14px;font-family:monospace;background:#f8fafc}
@@ -89,7 +87,6 @@
     .data-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;
       background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;
       padding:2px 8px;border-radius:12px;font-family:sans-serif;font-weight:600;margin-left:8px;vertical-align:middle}
-    /* ℙ vs ℚ comparison chart */
     .pvq-wrap{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:8px}
     .pvq-pane{padding:10px 14px 6px}
     .pvq-label{font-size:12px;font-weight:700;font-family:sans-serif;margin-bottom:6px;text-align:center}
@@ -119,7 +116,7 @@
 <div id="loadingOverlay">
   <div class="spinner"></div>
   <div class="ld-title">Fetching live market data…</div>
-  <div class="ld-sub">Pulling 36-month history via Finnhub</div>
+  <div class="ld-sub">Pulling rolling 3-year history via Finnhub</div>
 </div>
 <div class="wrap">
   <div class="hdr">
@@ -133,7 +130,6 @@
 </div>
 
 <script>
-/* ── asset meta (history fetched live) ── */
 const DB_META = {
   AAPL:{label:"AAPL",name:"Apple Inc.",cls:"個股 / Equity",emoji:"🍎",currency:"$",decimals:2,dT:0.5,finnSym:"AAPL",
     desc:"One of the world's largest companies by market cap, spanning consumer electronics, software services and the Apple Intelligence AI ecosystem.",
@@ -155,7 +151,6 @@ const DB_META = {
     note:"EUR fell below parity (0.9952) Sep 2022; strong rebound 2023; weak-USD trend accelerating 2025."},
 };
 
-/* ── fallback static data (Apr 2022 – Mar 2025) ── */
 const FB = {
   sofr:0.0433,
   months:["Apr '22","May '22","Jun '22","Jul '22","Aug '22","Sep '22","Oct '22","Nov '22","Dec '22","Jan '23","Feb '23","Mar '23","Apr '23","May '23","Jun '23","Jul '23","Aug '23","Sep '23","Oct '23","Nov '23","Dec '23","Jan '24","Feb '24","Mar '24","Apr '24","May '24","Jun '24","Jul '24","Aug '24","Sep '24","Oct '24","Nov '24","Dec '24","Jan '25","Feb '25","Mar '25"],
@@ -167,7 +162,6 @@ const FB = {
   EURUSD:[1.0548,1.0736,1.0483,1.0222,1.0006,0.9803,0.9879,1.0334,1.0705,1.0865,1.0598,1.0833,1.0990,1.0703,1.0919,1.1018,1.0802,1.0573,1.0565,1.0939,1.1050,1.0849,1.0850,1.0804,1.0716,1.0855,1.0714,1.0841,1.1048,1.1165,1.0872,1.0538,1.0367,1.0302,1.0382,1.0792]
 };
 
-/* ── state ── */
 let DB={}, MONTHS=[];
 const AC={AAPL:"#1d4ed8",SPY:"#0f766e",GLD:"#b45309",NVDA:"#6d28d9",BTC:"#d97706",EURUSD:"#0369a1"};
 const PAL=["#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6","#06b6d4","#f97316","#84cc16","#ec4899","#6366f1","#14b8a6","#a855f7"];
@@ -175,7 +169,6 @@ let sel="AAPL",tab="data",results=null,running=false;
 let params={K:220,T:0.5,nSteps:120,nPaths:25000,r:0.0433};
 const charts={};
 
-/* ── helpers ── */
 function tsToLabel(ts){
   const d=new Date(ts*1000);
   return d.toLocaleString('en-US',{month:'short',year:'2-digit'}).replace(' ','\'').replace(', '," '");
@@ -191,8 +184,23 @@ function hideOverlay(){
   ol.classList.add("hidden");
   setTimeout(()=>ol.style.display="none",450);
 }
+function getRollingThreeYearRange(){
+  const today = new Date();
+  const toDate = new Date(today);
+  const fromDate = new Date(today);
+  fromDate.setFullYear(fromDate.getFullYear() - 3);
 
-/* ── live fetch via /api/market (same-origin, no CORS) ── */
+  return {
+    from: Math.floor(fromDate.getTime() / 1000),
+    to: Math.floor(toDate.getTime() / 1000),
+    fromDate,
+    toDate
+  };
+}
+function getHistoryCountText(count){
+  return `${count} monthly end-of-month closing prices · rolling 3-year window`;
+}
+
 async function apiGet(params2){
   const qs=new URLSearchParams(params2).toString();
   const r=await fetch(`/api/market?${qs}`);
@@ -202,19 +210,15 @@ async function apiGet(params2){
 
 async function loadLiveData(){
   try{
-    const now=Math.floor(Date.now()/1000);
-    const from=now-36*31*24*3600;
+    const { from, to } = getRollingThreeYearRange();
 
-    // fetch SOFR + 6 candles concurrently
     const [sofrData,...candleArr]=await Promise.all([
       apiGet({type:"sofr"}),
-      ...Object.values(DB_META).map(m=>apiGet({type:"candle",sym:m.finnSym,res:"M",from,to:now}))
+      ...Object.values(DB_META).map(m=>apiGet({type:"candle",sym:m.finnSym,res:"M",from,to}))
     ]);
 
-    // SOFR
     if(sofrData?.data?.length) params.r=sofrData.data[sofrData.data.length-1].value/100;
 
-    // build month labels from first asset timestamps
     MONTHS=candleArr[0].t.map(tsToLabel);
 
     const keys=Object.keys(DB_META);
@@ -247,12 +251,11 @@ function useFallback(){
   params.K=DB[sel].dK;
   const el=MONTHS[MONTHS.length-1];
   document.getElementById("dataLabel").innerHTML=
-    `<span class="off-badge">Offline data</span> &nbsp;${MONTHS[0]} – ${el}`;
+    `<span class="off-badge">Offline data</span> &nbsp;Fallback static dataset &nbsp;·&nbsp; ${MONTHS[0]} – ${el}`;
   hideOverlay();
   render();
 }
 
-/* ══ UTILS ══ */
 function randn(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
 function cal(hist){
   const lr=hist.slice(1).map((p,i)=>Math.log(p/hist[i]));
@@ -277,7 +280,6 @@ function fmtY(k,v){
 }
 function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
 
-/* ══ MATH SYMBOLS ══ */
 const MU ="<span class='math cMu  bold'>μ̂</span>";
 const SIG="<span class='math cSig bold'>σ̂</span>";
 const RR ="<span class='math cR   bold'>r</span>";
@@ -289,7 +291,6 @@ const PP ="<span class='math cP       '>ℙ</span>";
 const QQ ="<span class='math cQ       '>ℚ</span>";
 const XI ="<span class='math cXi bold'>ξ</span>";
 
-/* ══ DOM HELPERS ══ */
 function el(tag,attrs,inner){
   const e=document.createElement(tag);
   if(attrs)for(const[k,v]of Object.entries(attrs)){
@@ -324,7 +325,6 @@ function card(borderLeft,bg){
   if(bg)d.style.background=bg;return d;
 }
 
-/* ══ MONTE CARLO ══ */
 function runMC(){
   if(running)return;
   running=true;renderSim();
@@ -360,7 +360,6 @@ function runMC(){
   },30);
 }
 
-/* ══ ASSET GRID ══ */
 function renderAssets(){
   const g=document.getElementById("assetGrid");g.innerHTML="";
   for(const[key,a]of Object.entries(DB)){
@@ -379,7 +378,6 @@ function renderAssets(){
   }
 }
 
-/* ══ TABS ══ */
 function renderTabs(){
   const bar=document.getElementById("tabBar");bar.innerHTML="";
   const ac=AC[sel];
@@ -394,14 +392,13 @@ function renderTabs(){
   });
 }
 
-/* ══ TAB: DATA ══ */
 function renderData(){
   const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.hist[a.hist.length-1];
   const θ=(c.mu-params.r)/c.sigma;
   const frag=document.createDocumentFragment();
   const startLabel=MONTHS[0],endLabel=MONTHS[MONTHS.length-1];
+  const historyCount = a.hist.length;
 
-  // banner
   const bn=el("div",{style:{background:`${ac}12`,border:`1px solid ${ac}30`,borderRadius:"10px",padding:"12px 18px",marginBottom:"14px"}});
   bn.innerHTML=`<div style="display:flex;align-items:center;gap:12px">
     <span style="font-size:32px">${a.emoji}</span>
@@ -415,17 +412,14 @@ function renderData(){
     </div></div>`;
   frag.appendChild(bn);
 
-  // price chart
   const pc=card(ac);
   pc.appendChild(el("h3",{className:"card-title"},`${a.label} &nbsp;Monthly Closing Price &nbsp;(${startLabel} – ${endLabel})`));
-  pc.appendChild(el("p",{className:"card-sub"},"36 monthly end-of-month closing prices · 3-year window"));
+  pc.appendChild(el("p",{className:"card-sub"},getHistoryCountText(historyCount)));
   const cw1=el("div",{className:"chart-wrap",style:{height:"230px"}});
   cw1.appendChild(el("canvas",{id:"cPrice"}));pc.appendChild(cw1);frag.appendChild(pc);
 
-  // two-col
   const tc=el("div",{className:"two-col"});
 
-  // calib
   const cc=card(ac);
   cc.appendChild(el("h3",{className:"card-title"},"Calibrated Parameters"));
   const tbl=el("table",{className:"calib-table"});const tb=el("tbody");
@@ -435,7 +429,7 @@ function renderData(){
     {k:MU,v:`${(c.mu*100).toFixed(2)}% / yr`,sub:"Annualized physical drift",c:"#0369a1"},
     {k:SIG,v:`${(c.sigma*100).toFixed(2)}% / yr`,sub:"Realized annualized volatility",c:"#6d28d9"},
     {k:`${TH} = (μ̂−r)/σ̂`,v:θ.toFixed(4),sub:"Girsanov kernel (Sharpe ratio)",c:"#be123c"},
-    {k:"Monthly obs.",v:`${a.hist.length} mo`,sub:`${startLabel} – ${endLabel}`,c:"#334155"},
+    {k:"Monthly obs.",v:`${historyCount} mo`,sub:`${startLabel} – ${endLabel}`,c:"#334155"},
   ].forEach(({k,v,sub,c:col})=>{
     const tr=el("tr");
     tr.innerHTML=`<td style="padding:6px 8px 6px 0;font-family:'Cambria Math',Georgia,serif;font-size:14px">${k}</td>
@@ -445,7 +439,6 @@ function renderData(){
   });
   tbl.appendChild(tb);cc.appendChild(tbl);tc.appendChild(cc);
 
-  // log-return dist
   const rc=card("#6d28d9");
   rc.appendChild(el("h3",{className:"card-title"},"Monthly Log-Return Distribution"));
   rc.appendChild(el("p",{className:"card-sub"},
@@ -496,7 +489,6 @@ function renderData(){
   });
 }
 
-/* ══ TAB: THEORY ══ */
 function renderTheory(){
   const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.hist[a.hist.length-1];
   const θ=(c.mu-params.r)/c.sigma;
@@ -593,7 +585,6 @@ function renderTheory(){
     d.appendChild(head);
     d.appendChild(el("p",{className:"step-body"},s.body));
     d.appendChild(s.eq);
-    // After step 7, inject ℙ vs ℚ comparison chart
     if(s.n===7){
       const pvqCard=card("#64748b");
       pvqCard.style.marginBottom="0";
@@ -618,11 +609,9 @@ function renderTheory(){
 
   const ct=document.getElementById("content");ct.innerHTML="";ct.appendChild(frag);
 
-  // Draw ℙ vs ℚ chart
   requestAnimationFrame(()=>{
     const a2=DB[sel],c2=cal(a2.hist),S0_2=a2.hist[a2.hist.length-1];
     const T2=params.T,n2=80,dt2=T2/n2,sqDt2=Math.sqrt(dt2),NS2=10;
-    // generate paths with shared Z values so comparison is fair
     const Zs=Array.from({length:NS2},()=>Array.from({length:n2},()=>randn()));
     function makePaths(drift){
       return Zs.map(zs=>{
@@ -658,14 +647,13 @@ function renderTheory(){
   });
 }
 
-/* ══ TAB: SIM + RESULTS ══ */
 function renderSim(){
   const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.hist[a.hist.length-1];
   const θ=(c.mu-params.r)/c.sigma;
   const endLabel=MONTHS[MONTHS.length-1];
+  const historyCount = a.hist.length;
   const frag=document.createDocumentFragment();
 
-  // calibrated strip
   const strip=el("div",{className:"cal-strip",style:{background:`${ac}0d`,border:`1px solid ${ac}30`}});
   strip.innerHTML=`<h3 style="font-size:14px;font-weight:700;color:${ac};font-family:sans-serif;margin-bottom:10px">${a.emoji} ${a.label} · Calibrated Parameters (locked — used in MC)</h3>`;
   const sg=el("div",{className:"cal-grid"});
@@ -683,7 +671,6 @@ function renderSim(){
   });
   strip.appendChild(sg);frag.appendChild(strip);
 
-  // option params
   const pc=card("#0369a1");
   pc.appendChild(el("h3",{className:"card-title",style:{marginBottom:"16px"}},"Option & Simulation Parameters"));
   const pg=el("div",{className:"param-grid"});
@@ -716,7 +703,6 @@ function renderSim(){
   }
   frag.appendChild(btn);
 
-  // results section
   if(results&&results.key===sel){
     const R=results,c2=R.c,θ2=R.θ;
     const μ2=(c2.mu*100).toFixed(2),σ2=(c2.sigma*100).toFixed(2),rv=(R.r*100).toFixed(2);
@@ -752,14 +738,13 @@ function renderSim(){
     cw2.appendChild(el("canvas",{id:"cPayoff"}));
     payCard.appendChild(cw2);frag.appendChild(payCard);
 
-    // full pricing chain
     const sc=card("#1e3a5f","#f8fafc");
     sc.appendChild(el("h3",{className:"card-title",style:{marginBottom:"14px"}},
       `${a.emoji} ${a.label} — Full Pricing Chain`));
     const stbl=el("table",{className:"sum-table"});const stb=el("tbody");
     [["Underlying",`${a.emoji} ${a.label} (${a.name}) · S₀ = ${fmtP(R.key,R.S0)} (${endLabel})`],
      ["Derivative","Arithmetic Asian call, path-dependent, no closed-form solution"],
-     [`${MU} Physical drift`,`${μ2}%/yr <span class="iNote">(${DB[R.key].hist.length}-month log-returns)</span>`],
+     [`${MU} Physical drift`,`${μ2}%/yr <span class="iNote">(${historyCount}-month log-returns)</span>`],
      [`${SIG} Realized volatility`,`${σ2}%/yr <span class="iNote">(monthly std dev ${(c2.stdM*100).toFixed(2)}% × √12)</span>`],
      [`${RR} Risk-free rate (SOFR)`,`${rv}%/yr`],
      [`Girsanov kernel ${TH}`,`(${μ2}% − ${rv}%) / ${σ2}% = <span class="math cTh bold">${θ2.toFixed(4)}</span>`],
@@ -821,7 +806,6 @@ function renderSim(){
   }
 }
 
-/* ══ MASTER RENDER ══ */
 function render(){
   Object.keys(charts).forEach(dc);
   renderAssets();renderTabs();
