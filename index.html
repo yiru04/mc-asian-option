@@ -165,7 +165,7 @@ const FB = {
 let DB={}, MONTHS=[];
 const AC={AAPL:"#1d4ed8",SPY:"#0f766e",GLD:"#b45309",NVDA:"#6d28d9",BTC:"#d97706",EURUSD:"#0369a1"};
 const PAL=["#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6","#06b6d4","#f97316","#84cc16","#ec4899","#6366f1","#14b8a6","#a855f7"];
-let sel="AAPL",tab="data",results=null,running=false;
+let sel="AAPL",tab="data",results=null,running=false,sigmaMode="monthly";
 let params={K:220,T:0.5,nSteps:120,nPaths:25000,r:0.0433};
 const charts={};
 
@@ -265,13 +265,15 @@ async function loadLiveData(){
 
     keys.forEach((key, i) => {
       const d = candleResults[i];
-      let hist;
+      let hist, histDaily = null;
       if(d && d.s !== "no_data" && Array.isArray(d.t) && d.t.length >= 30){
         const monthly = resampleMonthly(d.t, d.c);
         hist = monthly.map(m => m.close);
         // Align length to MONTHS (trim or pad with null-safe fallback)
         while(hist.length < MONTHS.length) hist.unshift(hist[0]);
         hist = hist.slice(-MONTHS.length);
+        // Store daily closes for daily-σ calibration
+        histDaily = d.c.filter(x => x != null);
       } else {
         // Asset-specific candle failed — fall back to static history for this asset
         console.warn(`Candle failed for ${key}, using static fallback`);
@@ -282,6 +284,7 @@ async function loadLiveData(){
       DB[key] = {
         ...DB_META[key],
         hist,
+        histDaily,
         lastMonthlyClose,
         livePrice:  lastMonthlyClose,  // temp; overwritten by quote below
         asOfPrice:  lastMonthlyClose
@@ -341,11 +344,18 @@ async function loadLiveData(){
 
 
 function randn(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
-function cal(hist){
-  const lr=hist.slice(1).map((p,i)=>Math.log(p/hist[i]));
+function cal(hist, mode){
+  // mode: "monthly" (default) or "daily"
+  const m = mode || sigmaMode;
+  const a = DB[sel];
+  // Use daily data if available and mode=daily
+  const prices = (m === "daily" && a && a.histDaily && a.histDaily.length > 10)
+    ? a.histDaily : hist;
+  const annFactor = (m === "daily" && a && a.histDaily && a.histDaily.length > 10) ? 252 : 12;
+  const lr=prices.slice(1).map((p,i)=>Math.log(p/prices[i]));
   const mn=lr.reduce((a,b)=>a+b,0)/lr.length;
   const vr=lr.reduce((a,r)=>a+(r-mn)**2,0)/(lr.length-1);
-  return{mu:mn*12,sigma:Math.sqrt(vr)*Math.sqrt(12),lr,stdM:Math.sqrt(vr)};
+  return{mu:mn*annFactor,sigma:Math.sqrt(vr)*Math.sqrt(annFactor),lr,stdM:Math.sqrt(vr),nObs:prices.length,annFactor};
 }
 function fmtP(k,p){
   if(k==="BTC")return p>=1000?`$${(p/1000).toFixed(1)}k`:`$${p.toFixed(0)}`;
@@ -413,7 +423,11 @@ function runMC(){
   if(running)return;
   running=true;renderSim();
   setTimeout(()=>{
-    const a=DB[sel],c=cal(a.hist),S0=a.livePrice ?? a.hist[a.hist.length-1];
+    const a=DB[sel];
+    const cActive2 = (sigmaMode==="daily" && a.histDaily && a.histDaily.length>10)
+      ? cal(a.hist,"daily") : cal(a.hist,"monthly");
+    const c=cActive2;
+    const S0=a.livePrice ?? a.hist[a.hist.length-1];
     const{K,T,nSteps,r}=params,σ=c.sigma,dt=T/nSteps,sqDt=Math.sqrt(dt),drift=r-0.5*σ*σ;
     const NS=Math.min(80,params.nPaths),skip=Math.max(1,Math.floor(nSteps/60));
     const rawP=Array.from({length:NS},()=>[{t:0,S:S0}]);
@@ -439,7 +453,7 @@ function runMC(){
     for(let i=0;i<nb;i++)if(cnts[i]>0)histD.push({label:fmtPay(sel,i*bw),cnt:cnts[i]});
     const mL=Math.max(...rawP.map(p=>p.length));
     const pathD=Array.from({length:mL},(_,i)=>({t:rawP[0][i]?.t??0,vals:rawP.map(p=>p[i]?.S??null)}));
-    results={price,se,ci,histD,zeros,K,T,r,nPaths:params.nPaths,S0,c,pathD,σ,θ:(c.mu-r)/σ,key:sel};
+    results={price,se,ci,histD,zeros,K,T,r,nPaths:params.nPaths,S0,c,pathD,σ,θ:(c.mu-r)/σ,key:sel,sigmaMode};
     running=false;tab="sim";render();
   },30);
 }
@@ -738,18 +752,43 @@ function renderTheory(){
 
 function renderSim(){
   const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.livePrice ?? a.hist[a.hist.length-1];
-  const θ=(c.mu-params.r)/c.sigma;
+  // Also compute daily cal for comparison (safe — falls back to monthly if no daily data)
+  const cDay = (a.histDaily && a.histDaily.length > 10) ? cal(a.hist, "daily") : null;
+  const cMon = cal(a.hist, "monthly");
+  const cActive = (sigmaMode === "daily" && cDay) ? cDay : cMon;
+  const θ=(cActive.mu-params.r)/cActive.sigma;
   const endLabel=MONTHS[MONTHS.length-1];
   const historyCount = a.hist.length;
   const frag=document.createDocumentFragment();
 
+  // ── σ calibration mode toggle ─────────────────────────────────────────────
+  const hasDailyData = !!(a.histDaily && a.histDaily.length > 10);
+  const toggleCard = el("div",{style:{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"10px",padding:"14px 18px",marginBottom:"14px"}});
+  toggleCard.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <div style="font-size:13px;font-weight:700;font-family:sans-serif;color:#1e3a5f">σ̂ Calibration Frequency</div>
+    <div style="display:flex;gap:0;border:1px solid #cbd5e1;border-radius:7px;overflow:hidden;font-family:sans-serif;font-size:12px">
+      <button id="btnMon" style="padding:6px 14px;border:none;cursor:pointer;font-weight:${sigmaMode==='monthly'?700:400};background:${sigmaMode==='monthly'?ac:'#fff'};color:${sigmaMode==='monthly'?'#fff':'#334155'};transition:all 0.15s">Monthly (×√12)</button>
+      <button id="btnDay" style="padding:6px 14px;border:none;cursor:pointer;font-weight:${sigmaMode==='daily'?700:400};background:${sigmaMode==='daily'&&hasDailyData?ac:'#fff'};color:${sigmaMode==='daily'&&hasDailyData?'#fff':'#334155'};transition:all 0.15s;${!hasDailyData?'opacity:0.4;cursor:not-allowed':''}" ${!hasDailyData?'disabled':''}>Daily (×√252)</button>
+    </div>
+    ${cDay ? `<div style="font-size:12px;color:#64748b;font-family:monospace">
+      Monthly σ̂ = <strong style="color:#6d28d9">${(cMon.sigma*100).toFixed(2)}%</strong>
+      &ensp;|&ensp;
+      Daily σ̂ = <strong style="color:#0369a1">${(cDay.sigma*100).toFixed(2)}%</strong>
+      &ensp;|&ensp; n = <strong>${cDay.nObs-1}</strong> daily returns
+    </div>` : `<div style="font-size:11px;color:#94a3b8;font-family:sans-serif">Daily data not available — using monthly</div>`}
+  </div>`;
+  toggleCard.querySelector('#btnMon').onclick = () => { sigmaMode='monthly'; results=null; render(); };
+  if(hasDailyData) toggleCard.querySelector('#btnDay').onclick = () => { sigmaMode='daily'; results=null; render(); };
+  frag.appendChild(toggleCard);
+
   const strip=el("div",{className:"cal-strip",style:{background:`${ac}0d`,border:`1px solid ${ac}30`}});
-  strip.innerHTML=`<h3 style="font-size:14px;font-weight:700;color:${ac};font-family:sans-serif;margin-bottom:10px">${a.emoji} ${a.label} · Calibrated Parameters (locked — used in MC)</h3>`;
+  const modeLabel = sigmaMode==="daily" && cDay ? `Daily ×√252 · n=${cDay.nObs-1} obs` : `Monthly ×√12 · n=${cMon.nObs-1} obs`;
+  strip.innerHTML=`<h3 style="font-size:14px;font-weight:700;color:${ac};font-family:sans-serif;margin-bottom:10px">${a.emoji} ${a.label} · Calibrated Parameters <span style="font-weight:400;font-size:11px;color:#94a3b8">(${modeLabel})</span></h3>`;
   const sg=el("div",{className:"cal-grid"});
   [{sym:`${SS}<sub>0</sub>`,val:fmtP(sel,S0),sub:"Live spot"},
    {sym:"M close",val:fmtP(sel,a.lastMonthlyClose ?? a.hist[a.hist.length-1]),sub:"Last monthly close"},
-   {sym:SIG,val:`${(c.sigma*100).toFixed(2)}%`,sub:"Realized volatility"},
-   {sym:MU,val:`${(c.mu*100).toFixed(2)}%`,sub:"Physical drift"},
+   {sym:SIG,val:`${(cActive.sigma*100).toFixed(2)}%`,sub:"Realized volatility"},
+   {sym:MU,val:`${(cActive.mu*100).toFixed(2)}%`,sub:"Physical drift"},
    {sym:RR,val:`${(params.r*100).toFixed(2)}%`,sub:"Risk-free rate"},
   ].forEach(({sym,val,sub})=>{
     const ci=el("div",{className:"cal-item",style:{border:`1px solid ${ac}30`}});
@@ -779,7 +818,7 @@ function renderSim(){
   lock.innerHTML=`${SIG} and ${MU}<br>locked to data<br>MC drifts at ${RR} only`;
   pg.appendChild(lock);pc.appendChild(pg);
   const warn=el("div",{className:"warn-box"});
-  warn.innerHTML=`<strong>Key insight:</strong> Physical drift <strong class="math">μ̂ = ${(c.mu*100).toFixed(2)}%</strong> does <em>not</em> enter the MC simulation. Paths drift at <strong class="math">r = ${(params.r*100).toFixed(2)}%</strong> under <strong class="math">ℚ</strong> — this is the essence of Girsanov's theorem.`;
+  warn.innerHTML=`<strong>Key insight:</strong> Physical drift <strong class="math">μ̂ = ${(cActive.mu*100).toFixed(2)}%</strong> does <em>not</em> enter the MC simulation. Paths drift at <strong class="math">r = ${(params.r*100).toFixed(2)}%</strong> under <strong class="math">ℚ</strong> — this is the essence of Girsanov's theorem.`;
   pc.appendChild(warn);frag.appendChild(pc);
 
   const btn=el("button",{className:"run-btn"});
@@ -834,8 +873,8 @@ function renderSim(){
     [["Underlying",`${a.emoji} ${a.label} (${a.name}) · S₀ = ${fmtP(R.key,R.S0)} (live spot)`],
      ["Monthly chart endpoint",`${fmtP(R.key,a.lastMonthlyClose ?? a.hist[a.hist.length-1])} (${endLabel})`],
      ["Derivative","Arithmetic Asian call, path-dependent, no closed-form solution"],
-     [`${MU} Physical drift`,`${μ2}%/yr <span class="iNote">(${historyCount}-month log-returns)</span>`],
-     [`${SIG} Realized volatility`,`${σ2}%/yr <span class="iNote">(monthly std dev ${(c2.stdM*100).toFixed(2)}% × √12)</span>`],
+     [`${MU} Physical drift`,`${μ2}%/yr <span class="iNote">(${R.sigmaMode==="daily"?`${c2.nObs-1}-day log-returns ×√252`:`${historyCount}-month log-returns ×√12`})</span>`],
+     [`${SIG} Realized volatility`,`${σ2}%/yr <span class="iNote">(${R.sigmaMode==="daily"?`daily std dev ${(c2.stdM*100).toFixed(3)}% × √252`:`monthly std dev ${(c2.stdM*100).toFixed(2)}% × √12`})</span>`],
      [`${RR} Risk-free rate (SOFR)`,`${rv}%/yr`],
      [`Girsanov kernel ${TH}`,`(${μ2}% − ${rv}%) / ${σ2}% = <span class="math cTh bold">${θ2.toFixed(4)}</span>`],
      ["Radon–Nikodým dℚ/dℙ",`exp( −${θ2.toFixed(4)} W<sup>ℙ</sup><sub>T</sub> − ${(0.5*θ2**2*R.T).toFixed(5)} )`],
