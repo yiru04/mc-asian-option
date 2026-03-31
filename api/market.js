@@ -1,4 +1,4 @@
-const FKEY = process.env.FINNHUB_KEY || "你的金鑰";
+const FKEY = process.env.FINNHUB_KEY || "d10od91r01qlsacac3agd10od91r01qlsacac3b0";
 const BASE = "https://finnhub.io/api/v1";
 
 module.exports = async function handler(req, res) {
