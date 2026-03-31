@@ -1,0 +1,6 @@
+{
+  "name": "mc-asian-option",
+  "version": "1.0.0",
+  "description": "Monte Carlo Asian Option Pricing — live market data via Finnhub",
+  "engines": { "node": ">=18" }
+}

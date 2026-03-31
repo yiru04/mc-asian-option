@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Monte Carlo Asian Option Pricing</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Georgia,serif;background:#f1f5f9;min-height:100vh}
+    .wrap{max-width:980px;margin:0 auto;padding:22px}
+    .hdr{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 55%,#1e40af 100%);
+      border-radius:14px;padding:20px 28px;margin-bottom:18px;
+      box-shadow:0 4px 20px rgba(15,23,42,0.35)}
+    .hdr h1{font-size:21px;font-weight:800;color:#f8fafc;margin-bottom:6px}
+    .hdr p{font-size:13px;color:#94a3b8}
+    .asset-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:18px}
+    .asset-btn{padding:10px 8px;border-radius:10px;border:2px solid #e2e8f0;
+      background:#fff;cursor:pointer;text-align:center;transition:all 0.15s;font-family:inherit}
+    .tabs{background:#fff;border-radius:10px;margin-bottom:18px;
+      box-shadow:0 1px 4px rgba(0,0,0,0.06);border:1px solid #e2e8f0;display:flex;overflow:hidden}
+    .tab-btn{flex:1;padding:12px 6px;border:none;background:transparent;
+      cursor:pointer;font-family:sans-serif;border-bottom:3px solid transparent;transition:all 0.15s}
+    .tab-btn.on{background:#eff6ff;border-bottom-color:#1e3a5f}
+    .card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;
+      padding:15px 19px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
+    .card-title{font-size:15px;font-weight:700;color:#1e3a5f;font-family:sans-serif;margin-bottom:4px}
+    .card-sub{font-size:12px;color:#94a3b8;margin-bottom:10px}
+    .step-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+    .step-num{width:27px;height:27px;border-radius:50%;display:flex;align-items:center;
+      justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0;font-family:sans-serif}
+    .step-title{font-size:14.5px;font-weight:700;font-family:sans-serif}
+    .step-body{font-size:13.5px;color:#334155;line-height:1.7;margin-bottom:8px}
+    /* math */
+    .eq-box{margin:11px 0 4px;padding:14px 22px;background:#f8fafc;
+      border:1px solid #e2e8f0;border-radius:10px;display:flex;flex-direction:column;gap:0}
+    .eq-box.hl{background:#fffbeb;border-color:#fde68a}
+    .key-box{margin:10px 0 2px;padding:14px 22px;
+      background:linear-gradient(135deg,#eff6ff,#f5f3ff);
+      border:2px solid #818cf8;border-radius:10px;
+      display:flex;flex-direction:column;gap:0}
+    .eq-row{display:grid;grid-template-columns:1fr auto;align-items:center;min-height:2.5em;padding:1px 0}
+    .eq-row.ind .eq-expr{padding-left:2.2em}
+    .eq-expr{font-family:'Cambria Math','STIX Two Math','Times New Roman',Georgia,serif;
+      font-size:14px;color:#0f172a;line-height:2;letter-spacing:0.01em}
+    .eq-note{font-family:sans-serif;font-size:10.5px;color:#94a3b8;font-style:italic;
+      white-space:nowrap;padding-left:16px;text-align:right}
+    .math{font-family:'Cambria Math','STIX Two Math','Times New Roman',Georgia,serif;letter-spacing:0.01em}
+    .iNote{font-family:sans-serif;font-size:11px;color:#94a3b8;font-style:italic;margin-left:8px}
+    .bold{font-weight:700}
+    .cP{color:#b45309}.cQ{color:#3730a3}.cSig{color:#6d28d9}.cMu{color:#0369a1}
+    .cR{color:#065f46}.cTh{color:#be123c}.cS{color:#15803d}.cB{color:#0e7490}
+    .cXi{color:#9333ea}.cW{color:#78350f}.cRes{color:#1e3a5f}
+    /* layout */
+    .param-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+    .param-input{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;
+      font-size:14px;font-family:monospace;background:#f8fafc}
+    .run-btn{width:100%;padding:14px;color:#fff;border:none;border-radius:10px;
+      cursor:pointer;font-size:16px;font-weight:700;font-family:sans-serif;letter-spacing:0.3px;margin-top:6px}
+    .metrics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+    .metric-box{border-radius:10px;padding:14px 16px;text-align:center;box-shadow:0 1px 5px rgba(0,0,0,0.05)}
+    .metric-label{font-size:11px;color:#94a3b8;margin-bottom:6px;font-family:sans-serif;line-height:1.4}
+    .metric-val{font-weight:800;font-family:monospace}
+    .calib-table{width:100%;border-collapse:collapse;font-family:'Cambria Math','STIX Two Math',Georgia,serif}
+    .calib-table tr{border-bottom:1px solid #f1f5f9}
+    .sum-table{width:100%;border-collapse:collapse;font-size:13.5px}
+    .sum-table tr{border-bottom:1px solid #e2e8f0}
+    .sum-table td{padding:7px 0;color:#0f172a;line-height:1.8;
+      font-family:'Cambria Math','STIX Two Math',Georgia,serif}
+    .sum-table td:first-child{padding-right:12px;color:#334155;font-family:sans-serif;
+      white-space:nowrap;vertical-align:top;font-size:13px}
+    .theory-banner{background:linear-gradient(135deg,#eff6ff,#f5f3ff);
+      border:1px solid #c7d2fe;border-radius:10px;padding:12px 18px;margin-bottom:16px}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+    .cal-strip{border-radius:10px;padding:14px 16px;margin-bottom:16px}
+    .cal-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px}
+    .cal-item{background:#fff;border-radius:8px;padding:10px 12px;text-align:center}
+    .cal-sym{font-size:19px;margin-bottom:3px;font-family:'Cambria Math','STIX Two Math',Georgia,serif;line-height:1.4}
+    .cal-val{font-size:15px;font-weight:800;font-family:monospace}
+    .cal-sub{font-size:10px;color:#94a3b8;font-family:sans-serif;margin-top:2px}
+    .warn-box{margin-top:12px;padding:10px 14px;background:#fffbeb;
+      border:1px solid #fde68a;border-radius:8px;font-size:13px;color:#92400e}
+    .empty-state{text-align:center;padding:70px 0;color:#94a3b8}
+    .chart-wrap{position:relative}
+    canvas{display:block}
+    .section-sep{display:flex;align-items:center;gap:10px;margin:20px 0 14px;
+      font-family:sans-serif;font-size:12px;font-weight:700;color:#94a3b8;letter-spacing:0.05em}
+    .section-sep::before,.section-sep::after{content:"";flex:1;height:1px;background:#e2e8f0}
+    .data-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;
+      background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;
+      padding:2px 8px;border-radius:12px;font-family:sans-serif;font-weight:600;margin-left:8px;vertical-align:middle}
+    /* ℙ vs ℚ comparison chart */
+    .pvq-wrap{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:8px}
+    .pvq-pane{padding:10px 14px 6px}
+    .pvq-label{font-size:12px;font-weight:700;font-family:sans-serif;margin-bottom:6px;text-align:center}
+    #loadingOverlay{position:fixed;inset:0;background:rgba(15,23,42,0.86);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      z-index:9999;gap:16px;transition:opacity 0.4s}
+    #loadingOverlay.hidden{opacity:0;pointer-events:none}
+    .spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,0.15);
+      border-top-color:#60a5fa;border-radius:50%;animation:spin 0.75s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .ld-title{color:#e2e8f0;font-family:sans-serif;font-size:15px;font-weight:600}
+    .ld-sub{color:#94a3b8;font-family:sans-serif;font-size:12px;text-align:center;max-width:280px;line-height:1.6}
+    .live-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;
+      background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;
+      padding:2px 7px;border-radius:12px;font-family:sans-serif;font-weight:700;
+      margin-left:6px;vertical-align:middle}
+    .live-dot{width:6px;height:6px;border-radius:50%;background:#16a34a;
+      animation:pulse 1.8s ease-in-out infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+    .off-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;
+      background:#fff7ed;border:1px solid #fed7aa;color:#92400e;
+      padding:2px 7px;border-radius:12px;font-family:sans-serif;font-weight:600;
+      margin-left:6px;vertical-align:middle}
+  </style>
+</head>
+<body>
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="ld-title">Fetching live market data…</div>
+  <div class="ld-sub">Pulling 36-month history via Finnhub</div>
+</div>
+<div class="wrap">
+  <div class="hdr">
+    <h1>Monte Carlo Asian Option Pricing</h1>
+    <p>Risk-neutral measure &nbsp;·&nbsp; Girsanov's theorem &nbsp;·&nbsp; Change of numeraire &nbsp;·&nbsp; <span id="dataLabel">Loading live data…</span></p>
+  </div>
+  <div style="margin-bottom:6px;font-size:12px;color:#94a3b8;font-family:sans-serif;font-weight:600;letter-spacing:0.05em">SELECT UNDERLYING ASSET</div>
+  <div class="asset-grid" id="assetGrid"></div>
+  <div class="tabs" id="tabBar"></div>
+  <div id="content"></div>
+</div>
+
+<script>
+/* ── asset meta (history fetched live) ── */
+const DB_META = {
+  AAPL:{label:"AAPL",name:"Apple Inc.",cls:"個股 / Equity",emoji:"🍎",currency:"$",decimals:2,dT:0.5,finnSym:"AAPL",
+    desc:"One of the world's largest companies by market cap, spanning consumer electronics, software services and the Apple Intelligence AI ecosystem.",
+    note:"Navigated Fed rate hikes (2022), AI pivot (2023–24), tariff shock Q1 2025."},
+  SPY:{label:"SPY",name:"S&P 500 ETF",cls:"指數 ETF / Index",emoji:"📊",currency:"$",decimals:2,dT:0.5,finnSym:"SPY",
+    desc:"The flagship ETF tracking the S&P 500, holding 500 of the largest US companies. Lower volatility than individual equities.",
+    note:"2022 bear market from Fed hikes; strong recovery 2023–24; tariff volatility in early 2025."},
+  GLD:{label:"GLD",name:"SPDR Gold Shares",cls:"大宗商品 ETF / Commodity",emoji:"🥇",currency:"$",decimals:2,dT:0.5,finnSym:"GLD",
+    desc:"Tracks the spot price of physical gold; each share ≈ 1/10 troy oz. Strong safe-haven demand lifted prices to repeated all-time highs.",
+    note:"USD strength capped gains in 2022; multi-year bull run from 2023 driven by central bank buying and geopolitical risk."},
+  NVDA:{label:"NVDA",name:"NVIDIA Corp.",cls:"個股 / Equity (AI)",emoji:"💻",currency:"$",decimals:2,dT:0.5,finnSym:"NVDA",
+    desc:"Leading AI-chip designer. Prices adjusted for the 10:1 split (Jun 10 2024).",
+    note:"AI boom drove extraordinary gains 2023–24; 10:1 split Jun 2024; all-time high Nov 2024."},
+  BTC:{label:"BTC",name:"Bitcoin",cls:"加密貨幣 / Crypto",emoji:"₿",currency:"$",decimals:0,dT:0.25,finnSym:"BINANCE:BTCUSDT",
+    desc:"The largest-cap crypto asset. Trades 24/7; volatility far exceeds traditional assets. Monthly closing prices used for calibration.",
+    note:"Post-2022-crash recovery; halving Apr 2024; first breach of $100k Nov 2024."},
+  EURUSD:{label:"EUR/USD",name:"Euro / US Dollar",cls:"外匯 / FX",emoji:"💱",currency:"",decimals:4,dT:0.5,finnSym:"OANDA:EUR_USD",
+    desc:"The world's most actively traded currency pair. Significant swing in 2025 as trade-policy fears weakened the USD.",
+    note:"EUR fell below parity (0.9952) Sep 2022; strong rebound 2023; weak-USD trend accelerating 2025."},
+};
+
+/* ── fallback static data (Apr 2022 – Mar 2025) ── */
+const FB = {
+  sofr:0.0433,
+  months:["Apr '22","May '22","Jun '22","Jul '22","Aug '22","Sep '22","Oct '22","Nov '22","Dec '22","Jan '23","Feb '23","Mar '23","Apr '23","May '23","Jun '23","Jul '23","Aug '23","Sep '23","Oct '23","Nov '23","Dec '23","Jan '24","Feb '24","Mar '24","Apr '24","May '24","Jun '24","Jul '24","Aug '24","Sep '24","Oct '24","Nov '24","Dec '24","Jan '25","Feb '25","Mar '25"],
+  AAPL:[157.65,148.84,136.72,162.51,174.78,150.43,138.38,148.03,129.93,143.96,147.92,160.77,169.68,177.82,189.59,192.46,187.87,171.21,170.77,189.97,192.53,184.40,182.32,171.21,170.77,192.35,210.62,218.54,226.51,233.00,225.91,237.33,249.79,237.59,241.84,223.19],
+  SPY:[411.55,387.35,360.40,393.57,411.52,362.79,378.43,394.26,380.35,408.47,401.52,411.49,415.39,418.87,439.81,454.78,447.29,427.17,418.45,454.96,471.05,488.10,506.08,521.41,505.65,527.78,545.81,554.34,560.72,572.62,578.79,601.85,592.37,581.06,596.11,562.27],
+  GLD:[174.81,168.24,162.62,165.48,164.12,154.19,155.88,159.14,157.84,167.21,165.22,178.10,181.99,183.60,183.83,187.19,183.87,177.14,179.01,185.72,188.54,196.22,190.14,202.72,210.52,214.38,218.64,224.05,239.18,242.48,253.43,258.24,256.97,271.23,280.50,292.60],
+  NVDA:[20.24,16.44,13.88,17.72,18.82,12.88,13.72,16.69,14.61,18.35,23.25,27.70,27.62,39.89,42.32,44.01,49.26,43.45,46.52,49.52,49.52,61.35,78.83,87.53,76.24,104.45,123.54,117.93,125.61,121.44,139.56,148.88,134.25,118.73,130.97,110.35],
+  BTC:[37732,29788,20165,23315,20050,19431,20492,17168,16547,23122,23446,28475,29244,27219,30478,29227,25933,26967,34518,37749,42265,43110,51812,71333,60623,67565,60995,66013,59120,63301,72384,97337,93429,102492,84297,82534],
+  EURUSD:[1.0548,1.0736,1.0483,1.0222,1.0006,0.9803,0.9879,1.0334,1.0705,1.0865,1.0598,1.0833,1.0990,1.0703,1.0919,1.1018,1.0802,1.0573,1.0565,1.0939,1.1050,1.0849,1.0850,1.0804,1.0716,1.0855,1.0714,1.0841,1.1048,1.1165,1.0872,1.0538,1.0367,1.0302,1.0382,1.0792]
+};
+
+/* ── state ── */
+let DB={}, MONTHS=[];
+const AC={AAPL:"#1d4ed8",SPY:"#0f766e",GLD:"#b45309",NVDA:"#6d28d9",BTC:"#d97706",EURUSD:"#0369a1"};
+const PAL=["#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6","#06b6d4","#f97316","#84cc16","#ec4899","#6366f1","#14b8a6","#a855f7"];
+let sel="AAPL",tab="data",results=null,running=false;
+let params={K:220,T:0.5,nSteps:120,nPaths:25000,r:0.0433};
+const charts={};
+
+/* ── helpers ── */
+function tsToLabel(ts){
+  const d=new Date(ts*1000);
+  return d.toLocaleString('en-US',{month:'short',year:'2-digit'}).replace(' ','\'').replace(', '," '");
+}
+function setDK(key){
+  const s0=DB[key].hist[DB[key].hist.length-1];
+  if(key==="BTC")DB[key].dK=Math.round(s0/5000)*5000;
+  else if(key==="EURUSD")DB[key].dK=parseFloat((Math.round(s0*20)/20).toFixed(2));
+  else DB[key].dK=Math.round(s0/10)*10;
+}
+function hideOverlay(){
+  const ol=document.getElementById("loadingOverlay");
+  ol.classList.add("hidden");
+  setTimeout(()=>ol.style.display="none",450);
+}
+
+/* ── live fetch via /api/market (same-origin, no CORS) ── */
+async function apiGet(params2){
+  const qs=new URLSearchParams(params2).toString();
+  const r=await fetch(`/api/market?${qs}`);
+  if(!r.ok) throw new Error(`/api/market ${r.status}`);
+  return r.json();
+}
+
+async function loadLiveData(){
+  try{
+    const now=Math.floor(Date.now()/1000);
+    const from=now-36*31*24*3600;
+
+    // fetch SOFR + 6 candles concurrently
+    const [sofrData,...candleArr]=await Promise.all([
+      apiGet({type:"sofr"}),
+      ...Object.values(DB_META).map(m=>apiGet({type:"candle",sym:m.finnSym,res:"M",from,to:now}))
+    ]);
+
+    // SOFR
+    if(sofrData?.data?.length) params.r=sofrData.data[sofrData.data.length-1].value/100;
+
+    // build month labels from first asset timestamps
+    MONTHS=candleArr[0].t.map(tsToLabel);
+
+    const keys=Object.keys(DB_META);
+    keys.forEach((key,i)=>{
+      const d=candleArr[i];
+      if(!d||d.s==="no_data"||!d.c) throw new Error(`no data: ${key}`);
+      DB[key]={...DB_META[key],hist:d.c.map(Number)};
+      setDK(key);
+    });
+
+    params.K=DB[sel].dK;
+    const sl=MONTHS[0], el=MONTHS[MONTHS.length-1];
+    document.getElementById("dataLabel").innerHTML=
+      `<span class="live-badge"><span class="live-dot"></span>Live</span> &nbsp;Finnhub &nbsp;·&nbsp; ${sl} – ${el}`;
+    hideOverlay();
+    render();
+  }catch(err){
+    console.warn("Live fetch failed, using fallback:",err.message);
+    useFallback();
+  }
+}
+
+function useFallback(){
+  MONTHS=FB.months;
+  params.r=FB.sofr;
+  ["AAPL","SPY","GLD","NVDA","BTC","EURUSD"].forEach(k=>{
+    DB[k]={...DB_META[k],hist:FB[k]};
+    setDK(k);
+  });
+  params.K=DB[sel].dK;
+  const el=MONTHS[MONTHS.length-1];
+  document.getElementById("dataLabel").innerHTML=
+    `<span class="off-badge">Offline data</span> &nbsp;${MONTHS[0]} – ${el}`;
+  hideOverlay();
+  render();
+}
+
+/* ══ UTILS ══ */
+function randn(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+function cal(hist){
+  const lr=hist.slice(1).map((p,i)=>Math.log(p/hist[i]));
+  const mn=lr.reduce((a,b)=>a+b,0)/lr.length;
+  const vr=lr.reduce((a,r)=>a+(r-mn)**2,0)/(lr.length-1);
+  return{mu:mn*12,sigma:Math.sqrt(vr)*Math.sqrt(12),lr,stdM:Math.sqrt(vr)};
+}
+function fmtP(k,p){
+  if(k==="BTC")return p>=1000?`$${(p/1000).toFixed(1)}k`:`$${p.toFixed(0)}`;
+  if(k==="EURUSD")return p.toFixed(4);
+  return`$${p.toFixed(DB[k].decimals)}`;
+}
+function fmtPay(k,p){
+  if(k==="BTC")return p>=1000?`${(p/1000).toFixed(1)}k`:`${p.toFixed(0)}`;
+  if(k==="EURUSD")return p.toFixed(4);
+  return p.toFixed(2);
+}
+function fmtY(k,v){
+  if(k==="BTC")return`${(v/1000).toFixed(0)}k`;
+  if(k==="EURUSD")return v.toFixed(3);
+  return v.toFixed(0);
+}
+function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+/* ══ MATH SYMBOLS ══ */
+const MU ="<span class='math cMu  bold'>μ̂</span>";
+const SIG="<span class='math cSig bold'>σ̂</span>";
+const RR ="<span class='math cR   bold'>r</span>";
+const TH ="<span class='math cTh  bold'>θ</span>";
+const SS ="<span class='math cS       '>S</span>";
+const BB ="<span class='math cB       '>B</span>";
+const WW ="<span class='math cW       '>W</span>";
+const PP ="<span class='math cP       '>ℙ</span>";
+const QQ ="<span class='math cQ       '>ℚ</span>";
+const XI ="<span class='math cXi bold'>ξ</span>";
+
+/* ══ DOM HELPERS ══ */
+function el(tag,attrs,inner){
+  const e=document.createElement(tag);
+  if(attrs)for(const[k,v]of Object.entries(attrs)){
+    if(k==="style"&&typeof v==="object")Object.assign(e.style,v);
+    else if(k==="className")e.className=v;
+    else if(k.startsWith("on"))e.addEventListener(k.slice(2).toLowerCase(),v);
+    else e.setAttribute(k,v);
+  }
+  if(inner!==undefined){
+    if(typeof inner==="string"||typeof inner==="number")e.innerHTML=inner;
+    else if(Array.isArray(inner))inner.filter(Boolean).forEach(c=>e.appendChild(c));
+    else e.appendChild(inner);
+  }
+  return e;
+}
+function eqRow(expr,indent,note){
+  const row=el("div",{className:"eq-row"+(indent?" ind":"")});
+  row.innerHTML=`<span class="eq-expr">${expr}</span>${note?`<span class="eq-note">${note}</span>`:""}`;
+  return row;
+}
+function eqBox(hl,...kids){
+  const d=el("div",{className:"eq-box"+(hl?" hl":"")});
+  kids.flat().forEach(k=>k&&d.appendChild(k));return d;
+}
+function keyBox(...kids){
+  const d=el("div",{className:"key-box"});
+  kids.flat().forEach(k=>k&&d.appendChild(k));return d;
+}
+function card(borderLeft,bg){
+  const d=el("div",{className:"card"});
+  d.style.borderLeft=`4px solid ${borderLeft||"#e2e8f0"}`;
+  if(bg)d.style.background=bg;return d;
+}
+
+/* ══ MONTE CARLO ══ */
+function runMC(){
+  if(running)return;
+  running=true;renderSim();
+  setTimeout(()=>{
+    const a=DB[sel],c=cal(a.hist),S0=a.hist[a.hist.length-1];
+    const{K,T,nSteps,r}=params,σ=c.sigma,dt=T/nSteps,sqDt=Math.sqrt(dt),drift=r-0.5*σ*σ;
+    const NS=14,skip=Math.max(1,Math.floor(nSteps/60));
+    const rawP=Array.from({length:NS},()=>[{t:0,S:S0}]);
+    let sumPV=0,sumPV2=0;const pays=[];
+    for(let p=0;p<params.nPaths;p++){
+      let S=S0,cumS=0;
+      for(let i=1;i<=nSteps;i++){
+        S*=Math.exp(drift*dt+σ*sqDt*randn());
+        cumS+=S;
+        if(p<NS&&i%skip===0)rawP[p].push({t:i*dt,S:+S.toFixed(a.decimals+2)});
+      }
+      const pay=Math.max(cumS/nSteps-K,0);
+      const pv=Math.exp(-r*T)*pay;sumPV+=pv;sumPV2+=pv*pv;pays.push(pay);
+    }
+    const price=sumPV/params.nPaths,
+          se=Math.sqrt((sumPV2/params.nPaths-price*price)/params.nPaths),
+          ci=[price-1.96*se,price+1.96*se];
+    const pos=pays.filter(x=>x>0),zeros=pays.length-pos.length;
+    const maxP=pos.length?Math.max(...pos.slice(0,8000)):1,nb=22,bw=maxP/nb;
+    const cnts=new Array(nb).fill(0);
+    for(const p of pos)cnts[Math.min(Math.floor(p/bw),nb-1)]++;
+    const histD=[{label:"0 (OTM)",cnt:zeros}];
+    for(let i=0;i<nb;i++)if(cnts[i]>0)histD.push({label:fmtPay(sel,i*bw),cnt:cnts[i]});
+    const mL=Math.max(...rawP.map(p=>p.length));
+    const pathD=Array.from({length:mL},(_,i)=>({t:rawP[0][i]?.t??0,vals:rawP.map(p=>p[i]?.S??null)}));
+    results={price,se,ci,histD,zeros,K,T,r,nPaths:params.nPaths,S0,c,pathD,σ,θ:(c.mu-r)/σ,key:sel};
+    running=false;tab="sim";render();
+  },30);
+}
+
+/* ══ ASSET GRID ══ */
+function renderAssets(){
+  const g=document.getElementById("assetGrid");g.innerHTML="";
+  for(const[key,a]of Object.entries(DB)){
+    const ac=AC[key],isSel=sel===key;
+    const c=cal(a.hist),s0=a.hist[a.hist.length-1];
+    const b=el("button",{className:"asset-btn",
+      style:{border:`2px solid ${isSel?ac:"#e2e8f0"}`,background:isSel?`${ac}15`:"#fff",
+        boxShadow:isSel?`0 0 0 3px ${ac}30`:"none"},
+      onClick:()=>{sel=key;params.K=a.dK;params.T=a.dT;results=null;tab="data";render();}});
+    b.innerHTML=`<div style="font-size:22px;margin-bottom:3px">${a.emoji}</div>
+      <div style="font-size:13px;font-weight:800;color:${isSel?ac:"#334155"};font-family:sans-serif">${a.label}</div>
+      <div style="font-size:10px;color:#94a3b8;font-family:sans-serif">${a.cls.split(" ")[0]}</div>
+      <div style="font-size:11.5px;font-weight:700;color:${isSel?ac:"#475569"};font-family:monospace;margin-top:3px">${fmtP(key,s0)}</div>
+      <div style="font-size:10px;color:#94a3b8">σ̂ = ${(c.sigma*100).toFixed(1)}%</div>`;
+    g.appendChild(b);
+  }
+}
+
+/* ══ TABS ══ */
+function renderTabs(){
+  const bar=document.getElementById("tabBar");bar.innerHTML="";
+  const ac=AC[sel];
+  [["data","📈","Data","Prices & Stats"],["theory","📐","Theory","ℙ → ℚ"],
+   ["sim","⚙️","Sim / Results","MC Pricing"]
+  ].forEach(([k,icon,zh,en])=>{
+    const b=el("button",{className:"tab-btn"+(tab===k?" on":""),onClick:()=>{tab=k;render();}});
+    b.innerHTML=`<div style="font-size:15px">${icon}</div>
+      <div style="font-size:12px;font-weight:${tab===k?700:500};color:${tab===k?ac:"#334155"}">${zh}</div>
+      <div style="font-size:10px;color:#94a3b8">${en}</div>`;
+    bar.appendChild(b);
+  });
+}
+
+/* ══ TAB: DATA ══ */
+function renderData(){
+  const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.hist[a.hist.length-1];
+  const θ=(c.mu-params.r)/c.sigma;
+  const frag=document.createDocumentFragment();
+  const startLabel=MONTHS[0],endLabel=MONTHS[MONTHS.length-1];
+
+  // banner
+  const bn=el("div",{style:{background:`${ac}12`,border:`1px solid ${ac}30`,borderRadius:"10px",padding:"12px 18px",marginBottom:"14px"}});
+  bn.innerHTML=`<div style="display:flex;align-items:center;gap:12px">
+    <span style="font-size:32px">${a.emoji}</span>
+    <div>
+      <div style="font-size:16px;font-weight:800;color:${ac};font-family:sans-serif">${a.label} &nbsp;·&nbsp; ${a.name}
+        <span style="margin-left:10px;font-size:12px;font-weight:500;color:#94a3b8;background:#f1f5f9;padding:2px 8px;border-radius:20px">${a.cls}</span>
+        <span class="live-badge"><span class="live-dot"></span>Live · Finnhub</span>
+      </div>
+      <div style="font-size:13px;color:#334155;margin-top:4px;line-height:1.6">${a.desc}</div>
+      <div style="font-size:12px;color:#94a3b8;margin-top:4px">${a.note}</div>
+    </div></div>`;
+  frag.appendChild(bn);
+
+  // price chart
+  const pc=card(ac);
+  pc.appendChild(el("h3",{className:"card-title"},`${a.label} &nbsp;Monthly Closing Price &nbsp;(${startLabel} – ${endLabel})`));
+  pc.appendChild(el("p",{className:"card-sub"},"36 monthly end-of-month closing prices · 3-year window"));
+  const cw1=el("div",{className:"chart-wrap",style:{height:"230px"}});
+  cw1.appendChild(el("canvas",{id:"cPrice"}));pc.appendChild(cw1);frag.appendChild(pc);
+
+  // two-col
+  const tc=el("div",{className:"two-col"});
+
+  // calib
+  const cc=card(ac);
+  cc.appendChild(el("h3",{className:"card-title"},"Calibrated Parameters"));
+  const tbl=el("table",{className:"calib-table"});const tb=el("tbody");
+  [
+    {k:`${SS}<sub>0</sub>`,v:fmtP(sel,S0),sub:`Last close (${endLabel})`,c:"#16a34a"},
+    {k:RR,v:`${(params.r*100).toFixed(2)}%`,sub:"SOFR risk-free rate",c:"#065f46"},
+    {k:MU,v:`${(c.mu*100).toFixed(2)}% / yr`,sub:"Annualized physical drift",c:"#0369a1"},
+    {k:SIG,v:`${(c.sigma*100).toFixed(2)}% / yr`,sub:"Realized annualized volatility",c:"#6d28d9"},
+    {k:`${TH} = (μ̂−r)/σ̂`,v:θ.toFixed(4),sub:"Girsanov kernel (Sharpe ratio)",c:"#be123c"},
+    {k:"Monthly obs.",v:`${a.hist.length} mo`,sub:`${startLabel} – ${endLabel}`,c:"#334155"},
+  ].forEach(({k,v,sub,c:col})=>{
+    const tr=el("tr");
+    tr.innerHTML=`<td style="padding:6px 8px 6px 0;font-family:'Cambria Math',Georgia,serif;font-size:14px">${k}</td>
+      <td style="font-weight:700;color:${col};font-size:14px;padding:6px 4px;font-family:monospace">${v}</td>
+      <td style="font-size:10.5px;color:#94a3b8;font-family:sans-serif;padding:6px 0">${sub}</td>`;
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb);cc.appendChild(tbl);tc.appendChild(cc);
+
+  // log-return dist
+  const rc=card("#6d28d9");
+  rc.appendChild(el("h3",{className:"card-title"},"Monthly Log-Return Distribution"));
+  rc.appendChild(el("p",{className:"card-sub"},
+    `Monthly std dev: ${(c.stdM*100).toFixed(2)}% &nbsp;× √12 = &nbsp;<strong style="color:#6d28d9">${(c.sigma*100).toFixed(2)}%</strong> annualized`));
+  const cw2=el("div",{className:"chart-wrap",style:{height:"175px"}});
+  cw2.appendChild(el("canvas",{id:"cRet"}));rc.appendChild(cw2);tc.appendChild(rc);
+  frag.appendChild(tc);
+
+  const ct=document.getElementById("content");ct.innerHTML="";ct.appendChild(frag);
+
+  requestAnimationFrame(()=>{
+    dc("price");
+    const ctx1=document.getElementById("cPrice");
+    if(ctx1){
+      charts.price=new Chart(ctx1,{type:"line",data:{labels:MONTHS,datasets:[
+        {label:`${a.label} (${a.currency||"USD"})`,data:a.hist,borderColor:ac,borderWidth:2.5,
+          pointRadius:3,pointBackgroundColor:ac,pointHoverRadius:6,fill:false,tension:0.1},
+      ]},options:{responsive:true,maintainAspectRatio:false,animation:{duration:300},
+        plugins:{
+          legend:{position:"top",labels:{font:{size:11},boxWidth:12}},
+          tooltip:{callbacks:{label:cx=>`${a.label}: ${fmtP(sel,cx.raw)}`},displayColors:false}
+        },
+        scales:{
+          x:{ticks:{font:{size:9},maxTicksLimit:14},title:{display:true,text:"Month",font:{size:11}}},
+          y:{ticks:{font:{size:10},callback:v=>fmtY(sel,v)},
+             title:{display:true,text:`Price (${a.currency||"USD"})`,font:{size:11}}}
+        }
+      }});
+    }
+    dc("ret");
+    const ctx2=document.getElementById("cRet");
+    if(ctx2){
+      const rs=c.lr.map(r=>parseFloat((r*100).toFixed(2)));
+      const mn2=Math.min(...rs),mx=Math.max(...rs),bw2=(mx-mn2)/12,bins={};
+      for(const r of rs){const k=parseFloat((Math.round(r/bw2)*bw2).toFixed(2));bins[k]=(bins[k]||0)+1;}
+      const sorted=Object.entries(bins).sort((a2,b)=>+a2[0]-+b[0]);
+      charts.ret=new Chart(ctx2,{type:"bar",
+        data:{labels:sorted.map(([k])=>`${k}%`),datasets:[{label:"Frequency",data:sorted.map(([,v])=>v),backgroundColor:ac+"bf",borderRadius:3}]},
+        options:{responsive:true,maintainAspectRatio:false,animation:{duration:300},
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:cx=>`Count: ${cx.raw}`},displayColors:false}},
+          scales:{
+            x:{ticks:{font:{size:9}},title:{display:true,text:"Monthly Log-Return (%)",font:{size:11}}},
+            y:{ticks:{font:{size:9}},title:{display:true,text:"Frequency (# months)",font:{size:11}}}
+          }
+        }
+      });
+    }
+  });
+}
+
+/* ══ TAB: THEORY ══ */
+function renderTheory(){
+  const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.hist[a.hist.length-1];
+  const θ=(c.mu-params.r)/c.sigma;
+  const μ=(c.mu*100).toFixed(2),σ=(c.sigma*100).toFixed(2),r=(params.r*100).toFixed(2);
+  const frag=document.createDocumentFragment();
+
+  const hb=el("div",{className:"theory-banner"});
+  hb.innerHTML=`<p style="font-size:13.5px;color:#3730a3;line-height:1.75">
+    Ten steps of the full <strong class="math">ℙ → ℚ</strong> measure-change chain, with live calibrated values from
+    <strong style="color:${ac}">${a.emoji} ${a.label} (${a.name})</strong>.
+    Numeraire: ${BB}<sub>t</sub> = e<sup>${RR}t</sup> &nbsp;(SOFR r = ${r}%).
+  </p>`;
+  frag.appendChild(hb);
+
+  const steps=[
+    {n:1,col:"#1e3a5f",title:"Derivative Contract — Arithmetic Asian Call",
+      body:`We choose an arithmetic Asian call because its payoff depends on the <em>entire price path</em> — the time-average of ${a.name} — making Monte Carlo a natural valuation tool: the payoff is path-dependent, there is no simple Black–Scholes-style closed form, and MC simulation can estimate the expectation directly.`,
+      eq:eqBox(false,
+        eqRow(`Λ<sub>T</sub> = max( <span class="math cSig">Ā</span><sub>T</sub> − <span class="math cMu">K</span>, 0 )`,false,"terminal payoff"),
+        eqRow(`<span class="math cSig">Ā</span><sub>T</sub> = <sup>1</sup>/<sub>n</sub> · ∑<sub>k=1</sub><sup>n</sup> ${SS}(t<sub>k</sub>)`,true,"discrete arithmetic average (n observation points)"),
+        eqRow(`${SS}<sub>0</sub> = ${fmtP(sel,S0)}, &ensp; <span class="math cMu">K</span> = ${fmtP(sel,params.K)}, &ensp; T = ${params.T} yr, &ensp; n = ${params.nSteps}`,true,"current settings"))},
+
+    {n:2,col:"#b45309",title:"Real-World Measure ℙ (Physical Measure)",
+      body:`Under ℙ, the price drifts at the historically observed rate μ̂ = ${μ}%/yr. This is what investors actually observe in the market.`,
+      eq:eqBox(false,
+        eqRow(`d${SS}<sub>t</sub> = ${MU}${SS}<sub>t</sub> dt + ${SIG}${SS}<sub>t</sub> d${WW}<sup>${PP}</sup><sub>t</sub>`,false,`${a.label} GBM under ℙ`),
+        eqRow(`${MU} = ${μ}%/yr, &ensp; ${SIG} = ${σ}%/yr`,true,`calibrated from ${a.hist.length} monthly log-returns`),
+        eqRow(`${SS}<sub>t</sub> = ${SS}<sub>0</sub> · exp[ (μ̂ − ½σ̂²)t + σ̂ ${WW}<sup>${PP}</sup><sub>t</sub> ]`,true,"log-normal closed-form solution"))},
+
+    {n:3,col:"#0e7490",title:"Numeraire — Money-Market Account Bₜ",
+      body:`The <strong>numeraire</strong> is the risk-free money-market account B<sub>t</sub>, growing deterministically at SOFR r = ${r}%/yr. Dividing all prices by B<sub>t</sub> converts them to <strong>present-value units</strong>. The discounted price X<sub>t</sub> = S<sub>t</sub>/B<sub>t</sub> still has non-zero drift μ̂ − r under ℙ, so it is <em>not</em> a ℙ-martingale — this non-zero excess return motivates the Girsanov measure change.`,
+      eq:eqBox(false,
+        eqRow(`${BB}<sub>t</sub> = e<sup>${RR}t</sup>, &ensp; d${BB}<sub>t</sub> = ${RR}${BB}<sub>t</sub> dt`,false,"numeraire (risk-free bond)"),
+        eqRow(`X<sub>t</sub> ≡ ${SS}<sub>t</sub>/${BB}<sub>t</sub> &ensp;⟹&ensp; dX<sub>t</sub> = (${MU} − ${RR})X<sub>t</sub> dt + ${SIG}X<sub>t</sub> d${WW}<sup>${PP}</sup><sub>t</sub>`,true,"discounted price — excess return μ̂ − r visible"),
+        eqRow(`μ̂ − r = ${μ}% − ${r}% = <span class="math cTh bold">${((c.mu-params.r)*100).toFixed(2)}% ≠ 0</span>`,true,"non-zero drift ⟹ Xₜ is not a ℙ-martingale"))},
+
+    {n:4,col:"#be123c",title:"Market Price of Risk θ — Girsanov Kernel",
+      body:`θ is the excess return per unit of volatility risk — the <strong>Sharpe ratio</strong> of the asset. It is the exact drift adjustment needed to eliminate the excess return, and is the key parameter of the Girsanov measure change.`,
+      eq:eqBox(false,
+        eqRow(`${TH} = ( ${MU} − ${RR} ) / ${SIG}`,false,"Girsanov kernel = Sharpe ratio"),
+        eqRow(`= ( ${μ}% − ${r}% ) / ${σ}%`,true,"substituting calibrated values"),
+        eqRow(`= <span class="math cTh bold">${θ.toFixed(4)}</span>`,true,"excess return per unit of volatility risk"))},
+
+    {n:5,col:"#9333ea",title:"Radon–Nikodým Derivative  dℚ∕dℙ",
+      body:"The measure change is encoded in the Radon–Nikodým derivative ξ<sub>t</sub> — the conversion factor between ℙ- and ℚ-probabilities, and a ℙ-martingale (Girsanov stochastic exponential).",
+      eq:eqBox(false,
+        eqRow(`${XI}<sub>t</sub> = exp( −${TH}${WW}<sup>${PP}</sup><sub>t</sub> − ½${TH}<sup>2</sup>t )`,false,"density process (stochastic exponential)"),
+        eqRow(`dℚ/dℙ |<sub>ℱ<sub>T</sub></sub> = ${XI}<sub>T</sub> = exp( −${θ.toFixed(4)} ${WW}<sup>${PP}</sup><sub>T</sub> − ${(0.5*θ**2*params.T).toFixed(5)} )`,true,"Radon–Nikodým at horizon T"),
+        eqRow(`𝔼<sup>${PP}</sup>[${XI}<sub>T</sub>] = 1 ✓ &ensp; exp(½θ²T) = ${Math.exp(0.5*θ**2*params.T).toFixed(4)} &lt; ∞ ✓`,true,"Novikov condition satisfied"))},
+
+    {n:6,col:"#3730a3",title:"Girsanov's Theorem — New Brownian Motion Wᵠ",
+      body:"Subtracting θ dt from W<sup>ℙ</sup> creates W<sup>ℚ</sup>, a standard Brownian motion under ℚ. The diffusion σ̂ is unchanged; only the drift is shifted.",
+      eq:eqBox(false,
+        eqRow(`${WW}<sup>${QQ}</sup><sub>t</sub> = ${WW}<sup>${PP}</sup><sub>t</sub> + ${TH}t`,false,"Girsanov shift (Cameron–Martin–Girsanov)"),
+        eqRow(`d${WW}<sup>${QQ}</sup><sub>t</sub> = d${WW}<sup>${PP}</sup><sub>t</sub> + ${TH} dt`,true,"differential form"),
+        eqRow(`𝔼<sup>${QQ}</sup>[${WW}<sup>${QQ}</sup><sub>t</sub>] = 0 ✓, &ensp; [${WW}<sup>${QQ}</sup>]<sub>t</sub> = t ✓`,true,"Lévy characterization: Wᵠ is a ℚ-Brownian motion"))},
+
+    {n:7,col:"#3730a3",title:`SDE under ℚ — μ̂ Vanishes, Replaced by r`,
+      body:`Substituting dW<sup>ℙ</sup> = dW<sup>ℚ</sup> − θ dt into the SDE, μ̂ cancels and is replaced by r. Under ℚ every asset drifts at r regardless of risk — the defining property of the risk-neutral measure. The chart below shows this directly.`,
+      eq:eqBox(true,
+        eqRow(`d${SS}<sub>t</sub> = ${MU}${SS}<sub>t</sub> dt + ${SIG}${SS}<sub>t</sub> d${WW}<sup>${PP}</sup><sub>t</sub>`,false,"start: SDE under ℙ"),
+        eqRow(`= (μ̂ − σ̂θ)${SS}<sub>t</sub> dt + ${SIG}${SS}<sub>t</sub> d${WW}<sup>${QQ}</sup><sub>t</sub>`,true,"substitute dW<sup>ℙ</sup> = dW<sup>ℚ</sup> − θ dt"),
+        keyBox(
+          eqRow(`d<span class="math cS bold">S</span><sub>t</sub> = <span class="math cR bold">r</span>${SS}<sub>t</sub> dt + ${SIG}${SS}<sub>t</sub> d${WW}<sup>${QQ}</sup><sub>t</sub>`,false,`${a.label} GBM under ℚ  ★`),
+          eqRow(`( μ̂ − σ̂θ = ${μ}% − ${σ}% × ${θ.toFixed(4)} = ${r}% )`,true,`μ̂ = ${μ}%  →  r = ${r}%`)))},
+
+    {n:8,col:"#0f766e",title:"Martingale Property — FTAP",
+      body:"Under ℚ, X<sub>t</sub> = S<sub>t</sub>/B<sub>t</sub> is a pure diffusion (zero drift), i.e. a true ℚ-martingale. This is the Harrison–Kreps–Pliska Fundamental Theorem of Asset Pricing.",
+      eq:eqBox(false,
+        eqRow(`dX<sub>t</sub> = ${SIG}X<sub>t</sub> d${WW}<sup>${QQ}</sup><sub>t</sub> &ensp; <span class="iNote">(drift = 0 ⟹ ℚ-martingale)</span>`,false,"discounted price under ℚ"),
+        eqRow(`𝔼<sup>${QQ}</sup>[ S<sub>T</sub>/B<sub>T</sub> | ℱ<sub>t</sub> ] = S<sub>t</sub>/B<sub>t</sub> ✓`,true,"ℚ-martingale property"),
+        eqRow(`No-arbitrage ⟺ ∃ equivalent martingale measure <span class="math cQ bold">ℚ</span> ✓`,true,"FTAP (Harrison–Kreps–Pliska)"))},
+
+    {n:9,col:"#1e3a5f",title:"Risk-Neutral Pricing Formula",
+      body:`By FTAP, the no-arbitrage value of any attainable derivative is the discounted ℚ-expectation of its payoff. Because the discounted price process is a ℚ-martingale under the money-market numeraire, the derivative value equals the discounted ℚ-expectation of its terminal payoff. The physical drift μ̂ = ${μ}% disappears entirely — two investors with different views on ${a.label}'s expected return agree on the option price.`,
+      eq:eqBox(true,keyBox(
+        eqRow(`V<sub>t</sub> = B<sub>t</sub> · 𝔼<sup>${QQ}</sup>[ Λ<sub>T</sub> / B<sub>T</sub> | ℱ<sub>t</sub> ]`,false,"martingale pricing formula  ★"),
+        eqRow(`V<sub>0</sub> = e<sup>−rT</sup> · 𝔼<sup>${QQ}</sup>[ max( <span class="math cSig">Ā</span><sub>T</sub> − K, 0 ) ]`,true,"at t = 0, substituting B<sub>T</sub> = e<sup>rT</sup>"),
+        eqRow(`( only r = ${r}% and σ̂ = ${σ}% enter V<sub>0</sub> )`,true,`μ̂ = ${μ}% does not appear`)))},
+
+    {n:10,col:"#0369a1",title:"Monte Carlo Estimator",
+      body:"Arithmetic Asian options have no closed-form solution (the arithmetic mean of log-normals is not log-normal). We simulate N paths under ℚ using exact log-normal discretization and apply the Law of Large Numbers.",
+      eq:eqBox(false,
+        eqRow(`${SS}<sub>t+Δt</sub> = ${SS}<sub>t</sub> · exp[ ( ${RR} − ½${SIG}<sup>2</sup> ) Δt + ${SIG}√Δt · Z<sub>k</sub> ], &ensp; Z<sub>k</sub>~N(0,1)`,false,"exact discretization under ℚ"),
+        eqRow(`= ${SS}<sub>t</sub> · exp[ ${(params.r-0.5*c.sigma**2).toFixed(5)} Δt + ${c.sigma.toFixed(4)}√Δt · Z<sub>k</sub> ]`,true,"substituting calibrated values"),
+        eqRow(`<span class="math cRes bold">V̂</span><sub>0</sub> = e<sup>−rT</sup> · <sup>1</sup>/<sub>N</sub> ∑<sub>j=1</sub><sup>N</sup> max( Ā<sub>j</sub> − K, 0 ) &ensp;→<sup>a.s.</sup>&ensp; V<sub>0</sub>`,true,"LLN guarantees convergence as N → ∞"))},
+  ];
+
+  steps.forEach(s=>{
+    const d=card(s.col);
+    const head=el("div",{className:"step-head"});
+    head.appendChild(el("div",{className:"step-num",style:{background:s.col}},s.n));
+    head.appendChild(el("h3",{className:"step-title",style:{color:s.col}},s.title));
+    d.appendChild(head);
+    d.appendChild(el("p",{className:"step-body"},s.body));
+    d.appendChild(s.eq);
+    // After step 7, inject ℙ vs ℚ comparison chart
+    if(s.n===7){
+      const pvqCard=card("#64748b");
+      pvqCard.style.marginBottom="0";
+      pvqCard.innerHTML=`<h3 class="card-title" style="margin-bottom:4px">ℙ vs ℚ: What Girsanov Actually Does</h3>
+        <p class="card-sub">Same S₀ and σ̂; only the drift changes. Under ℙ paths trend at μ̂ = ${μ}%; under ℚ they drift at r = ${r}%.</p>
+        <div class="pvq-wrap">
+          <div class="pvq-pane">
+            <div class="pvq-label" style="color:#b45309">Real-World ℙ &nbsp;(drift = μ̂ = ${μ}%)</div>
+            <div class="chart-wrap" style="height:170px"><canvas id="cPvP"></canvas></div>
+          </div>
+          <div class="pvq-pane" style="border-left:2px dashed #e2e8f0">
+            <div class="pvq-label" style="color:#3730a3">Risk-Neutral ℚ &nbsp;(drift = r = ${r}%)</div>
+            <div class="chart-wrap" style="height:170px"><canvas id="cPvQ"></canvas></div>
+          </div>
+        </div>`;
+      frag.appendChild(d);
+      frag.appendChild(pvqCard);
+      return;
+    }
+    frag.appendChild(d);
+  });
+
+  const ct=document.getElementById("content");ct.innerHTML="";ct.appendChild(frag);
+
+  // Draw ℙ vs ℚ chart
+  requestAnimationFrame(()=>{
+    const a2=DB[sel],c2=cal(a2.hist),S0_2=a2.hist[a2.hist.length-1];
+    const T2=params.T,n2=80,dt2=T2/n2,sqDt2=Math.sqrt(dt2),NS2=10;
+    // generate paths with shared Z values so comparison is fair
+    const Zs=Array.from({length:NS2},()=>Array.from({length:n2},()=>randn()));
+    function makePaths(drift){
+      return Zs.map(zs=>{
+        const pts=[S0_2];let S=S0_2;
+        for(const z of zs){S*=Math.exp((drift-0.5*c2.sigma**2)*dt2+c2.sigma*sqDt2*z);pts.push(S);}
+        return pts;
+      });
+    }
+    const tLabels=Array.from({length:n2+1},(_,i)=>(i*dt2).toFixed(2));
+    function drawPvQ(canvasId,paths,color){
+      dc(canvasId);
+      const ctx=document.getElementById(canvasId);
+      if(!ctx)return;
+      charts[canvasId]=new Chart(ctx,{type:"line",
+        data:{labels:tLabels,datasets:paths.map((p,j)=>({
+          data:p,borderColor:color+(["cc","aa","99","88","77","66","55","44","33","22"][j]),
+          borderWidth:1.3,pointRadius:0,fill:false,tension:0.1,spanGaps:true
+        }))},
+        options:{responsive:true,maintainAspectRatio:false,animation:{duration:0},
+          plugins:{legend:{display:false},tooltip:{enabled:false}},
+          scales:{
+            x:{ticks:{font:{size:8},maxTicksLimit:6},
+               title:{display:true,text:"Time t (yr)",font:{size:10}}},
+            y:{ticks:{font:{size:9},callback:v=>fmtY(sel,v)},
+               title:{display:true,text:`Price (${a2.currency||"USD"})`,font:{size:10}},
+               min:S0_2*0.4,max:S0_2*2.2}
+          }
+        }
+      });
+    }
+    drawPvQ("cPvP",makePaths(c2.mu),"#b45309");
+    drawPvQ("cPvQ",makePaths(params.r),"#3730a3");
+  });
+}
+
+/* ══ TAB: SIM + RESULTS ══ */
+function renderSim(){
+  const a=DB[sel],ac=AC[sel],c=cal(a.hist),S0=a.hist[a.hist.length-1];
+  const θ=(c.mu-params.r)/c.sigma;
+  const endLabel=MONTHS[MONTHS.length-1];
+  const frag=document.createDocumentFragment();
+
+  // calibrated strip
+  const strip=el("div",{className:"cal-strip",style:{background:`${ac}0d`,border:`1px solid ${ac}30`}});
+  strip.innerHTML=`<h3 style="font-size:14px;font-weight:700;color:${ac};font-family:sans-serif;margin-bottom:10px">${a.emoji} ${a.label} · Calibrated Parameters (locked — used in MC)</h3>`;
+  const sg=el("div",{className:"cal-grid"});
+  [{sym:`${SS}<sub>0</sub>`,val:fmtP(sel,S0),sub:"Current price"},
+   {sym:SIG,val:`${(c.sigma*100).toFixed(2)}%`,sub:"Realized volatility"},
+   {sym:MU,val:`${(c.mu*100).toFixed(2)}%`,sub:"Physical drift"},
+   {sym:RR,val:`${(params.r*100).toFixed(2)}%`,sub:"Risk-free rate"},
+   {sym:TH,val:θ.toFixed(4),sub:"Girsanov kernel"},
+  ].forEach(({sym,val,sub})=>{
+    const ci=el("div",{className:"cal-item",style:{border:`1px solid ${ac}30`}});
+    ci.innerHTML=`<div class="cal-sym">${sym}</div>
+      <div class="cal-val" style="color:${ac}">${val}</div>
+      <div class="cal-sub">${sub}</div>`;
+    sg.appendChild(ci);
+  });
+  strip.appendChild(sg);frag.appendChild(strip);
+
+  // option params
+  const pc=card("#0369a1");
+  pc.appendChild(el("h3",{className:"card-title",style:{marginBottom:"16px"}},"Option & Simulation Parameters"));
+  const pg=el("div",{className:"param-grid"});
+  [{k:"K",lbl:`<span class="math cMu">K</span> &nbsp;Strike (${a.currency||"USD"})`,step:sel==="BTC"?500:sel==="EURUSD"?0.005:5,min:0},
+   {k:"T",lbl:`<span class="math">T</span> &nbsp;Maturity (yr)`,step:0.25,min:0.25},
+   {k:"r",lbl:`${RR} &nbsp;Risk-free rate`,step:0.001,min:0},
+   {k:"nSteps",lbl:`<span class="math">n</span> &nbsp;Observation points`,step:20,min:20},
+   {k:"nPaths",lbl:`<span class="math">N</span> &nbsp;MC paths`,step:5000,min:1000},
+  ].forEach(({k,lbl,step,min})=>{
+    const div=document.createElement("div");
+    const lbl2=el("label",{style:{display:"block",fontSize:"13px",color:"#334155",marginBottom:"5px",fontFamily:"'Cambria Math',Georgia,serif"}},lbl);
+    const inp=el("input",{type:"number",step,min,value:params[k],className:"param-input"});
+    inp.oninput=e=>{const v=parseFloat(e.target.value);if(!isNaN(v))params[k]=v;};
+    div.appendChild(lbl2);div.appendChild(inp);pg.appendChild(div);
+  });
+  const lock=el("div",{style:{padding:"14px 10px",background:"#f8fafc",borderRadius:"8px",border:"1px solid #e2e8f0",textAlign:"center",fontSize:"12px",color:"#94a3b8",fontFamily:"sans-serif",lineHeight:1.7}});
+  lock.innerHTML=`${SIG} and ${MU}<br>locked to data<br>MC drifts at ${RR} only`;
+  pg.appendChild(lock);pc.appendChild(pg);
+  const warn=el("div",{className:"warn-box"});
+  warn.innerHTML=`<strong>Key insight:</strong> Physical drift <strong class="math">μ̂ = ${(c.mu*100).toFixed(2)}%</strong> does <em>not</em> enter the MC simulation. Paths drift at <strong class="math">r = ${(params.r*100).toFixed(2)}%</strong> under <strong class="math">ℚ</strong> — this is the essence of Girsanov's theorem.`;
+  pc.appendChild(warn);frag.appendChild(pc);
+
+  const btn=el("button",{className:"run-btn"});
+  if(running){btn.disabled=true;btn.style.background="#94a3b8";btn.textContent="⏳  Simulating…";}
+  else{
+    btn.style.background=`linear-gradient(135deg,${ac},#1e40af)`;
+    btn.style.boxShadow="0 3px 12px rgba(30,64,175,0.4)";
+    btn.textContent=`${a.emoji}  Run Monte Carlo  (N = ${params.nPaths.toLocaleString()} paths)`;
+    btn.onclick=runMC;
+  }
+  frag.appendChild(btn);
+
+  // results section
+  if(results&&results.key===sel){
+    const R=results,c2=R.c,θ2=R.θ;
+    const μ2=(c2.mu*100).toFixed(2),σ2=(c2.sigma*100).toFixed(2),rv=(R.r*100).toFixed(2);
+
+    frag.appendChild(el("div",{className:"section-sep"},"RESULTS"));
+
+    const mg=el("div",{className:"metrics-grid"});
+    [{lbl:`Option price &nbsp;<span class="math cRes bold">V̂</span><sub>0</sub>`,val:fmtP(R.key,R.price),bg:"#eff6ff",bd:"#bfdbfe",c:"#1e40af",sz:18},
+     {lbl:"95% Confidence Interval",val:`[${fmtP(R.key,R.ci[0])}, ${fmtP(R.key,R.ci[1])}]`,bg:"#f0fdf4",bd:"#bbf7d0",c:"#166534",sz:13},
+     {lbl:"Standard Error",val:fmtP(R.key,R.se),bg:"#faf5ff",bd:"#e9d5ff",c:"#6b21a8",sz:14},
+     {lbl:`Girsanov &nbsp;${TH} = (μ̂−r)/σ̂`,val:θ2.toFixed(4),bg:"#fff7ed",bd:"#fed7aa",c:"#9a3412",sz:14},
+    ].forEach(({lbl,val,bg,bd,c:col,sz})=>{
+      const box=el("div",{className:"metric-box",style:{background:bg,border:`1px solid ${bd}`}});
+      box.innerHTML=`<div class="metric-label">${lbl}</div>
+        <div class="metric-val" style="color:${col};font-size:${sz}px">${val}</div>`;
+      mg.appendChild(box);
+    });
+    frag.appendChild(mg);
+
+    const pathCard=card("#3730a3");
+    pathCard.appendChild(el("h3",{className:"card-title"},
+      `${a.emoji} Simulated Paths under ℚ &nbsp;<span style="font-weight:400;font-size:12px;color:#94a3b8">drift = r = ${rv}%,  not μ̂ = ${μ2}%</span>`));
+    const cw1=el("div",{className:"chart-wrap",style:{height:"240px"}});
+    cw1.appendChild(el("canvas",{id:"cPaths"}));
+    pathCard.appendChild(cw1);frag.appendChild(pathCard);
+
+    const payCard=card("#0369a1");
+    payCard.appendChild(el("h3",{className:"card-title"},
+      `Payoff Distribution &nbsp;<span style="font-weight:400;font-size:12px;color:#94a3b8;font-family:'Cambria Math',Georgia,serif">max(Ā<sub>T</sub> − ${fmtP(R.key,R.K)}, 0)</span>`));
+    payCard.appendChild(el("p",{className:"card-sub"},
+      `${((R.zeros/R.nPaths)*100).toFixed(1)}% expired OTM (zero payoff) · Positive payoffs are right-skewed`));
+    const cw2=el("div",{className:"chart-wrap",style:{height:"200px"}});
+    cw2.appendChild(el("canvas",{id:"cPayoff"}));
+    payCard.appendChild(cw2);frag.appendChild(payCard);
+
+    // full pricing chain
+    const sc=card("#1e3a5f","#f8fafc");
+    sc.appendChild(el("h3",{className:"card-title",style:{marginBottom:"14px"}},
+      `${a.emoji} ${a.label} — Full Pricing Chain`));
+    const stbl=el("table",{className:"sum-table"});const stb=el("tbody");
+    [["Underlying",`${a.emoji} ${a.label} (${a.name}) · S₀ = ${fmtP(R.key,R.S0)} (${endLabel})`],
+     ["Derivative","Arithmetic Asian call, path-dependent, no closed-form solution"],
+     [`${MU} Physical drift`,`${μ2}%/yr <span class="iNote">(${DB[R.key].hist.length}-month log-returns)</span>`],
+     [`${SIG} Realized volatility`,`${σ2}%/yr <span class="iNote">(monthly std dev ${(c2.stdM*100).toFixed(2)}% × √12)</span>`],
+     [`${RR} Risk-free rate (SOFR)`,`${rv}%/yr`],
+     [`Girsanov kernel ${TH}`,`(${μ2}% − ${rv}%) / ${σ2}% = <span class="math cTh bold">${θ2.toFixed(4)}</span>`],
+     ["Radon–Nikodým dℚ/dℙ",`exp( −${θ2.toFixed(4)} W<sup>ℙ</sup><sub>T</sub> − ${(0.5*θ2**2*R.T).toFixed(5)} )`],
+     ["Drift under ℚ",`<span class="math cR bold">r = ${rv}%</span> <span class="iNote">(μ̂ = ${μ2}% eliminated by measure change)</span>`],
+     ["Pricing formula",`V<sub>0</sub> = e<sup>−rT</sup> · 𝔼<sup>ℚ</sup>[max(Ā<sub>T</sub> − K, 0)]`],
+     ["MC simulation",`N = ${R.nPaths.toLocaleString()} paths · n = ${params.nSteps} steps · exact log-normal scheme`],
+     [`<span class="math cRes bold">V̂</span><sub>0</sub>`,`<span class="math cRes bold" style="font-size:16px">${fmtP(R.key,R.price)}</span> &ensp; 95% CI: [${fmtP(R.key,R.ci[0])}, ${fmtP(R.key,R.ci[1])}]`],
+    ].forEach(([k,v])=>{
+      const tr=el("tr");tr.innerHTML=`<td>${k}</td><td>${v}</td>`;stb.appendChild(tr);
+    });
+    stbl.appendChild(stb);sc.appendChild(stbl);frag.appendChild(sc);
+  }
+
+  const ct=document.getElementById("content");ct.innerHTML="";ct.appendChild(frag);
+
+  if(results&&results.key===sel){
+    const R=results,ac2=AC[R.key];
+    requestAnimationFrame(()=>{
+      dc("paths");
+      const ctx1=document.getElementById("cPaths");
+      if(ctx1&&R.pathD.length){
+        charts.paths=new Chart(ctx1,{type:"line",
+          data:{labels:R.pathD.map(d=>d.t.toFixed(2)),
+            datasets:Array.from({length:R.pathD[0].vals.length},(_,j)=>({
+              data:R.pathD.map(d=>d.vals[j]),
+              borderColor:PAL[j%PAL.length],borderWidth:1.2,
+              pointRadius:0,fill:false,tension:0.1,spanGaps:true,
+            }))},
+          options:{responsive:true,maintainAspectRatio:false,animation:{duration:200},
+            plugins:{legend:{display:false},tooltip:{enabled:false}},
+            scales:{
+              x:{ticks:{font:{size:9},maxTicksLimit:10},title:{display:true,text:"Time t (years)",font:{size:11}}},
+              y:{ticks:{font:{size:10},callback:v=>fmtY(R.key,v)},
+                 title:{display:true,text:`Price (${DB[R.key].currency||"USD"})`,font:{size:11}}}
+            }
+          }
+        });
+      }
+      dc("payoff");
+      const ctx2=document.getElementById("cPayoff");
+      if(ctx2){
+        const data=R.histD.slice(0,23);
+        charts.payoff=new Chart(ctx2,{type:"bar",
+          data:{labels:data.map(d=>d.label),
+            datasets:[{label:"Frequency",data:data.map(d=>d.cnt),backgroundColor:ac2+"cc",borderRadius:3}]},
+          options:{responsive:true,maintainAspectRatio:false,animation:{duration:200},
+            plugins:{legend:{display:false},tooltip:{callbacks:{label:cx=>`Count: ${cx.raw}`},displayColors:false}},
+            scales:{
+              x:{ticks:{font:{size:9},maxRotation:45},
+                 title:{display:true,text:`Payoff  max(Ā\u209c − K, 0)  (${DB[R.key].currency||"USD"})`,font:{size:11}}},
+              y:{ticks:{font:{size:9}},
+                 title:{display:true,text:"Frequency (# paths)",font:{size:11}}}
+            }
+          }
+        });
+      }
+    });
+  }
+}
+
+/* ══ MASTER RENDER ══ */
+function render(){
+  Object.keys(charts).forEach(dc);
+  renderAssets();renderTabs();
+  if(tab==="data")renderData();
+  else if(tab==="theory")renderTheory();
+  else renderSim();
+}
+
+loadLiveData();
+</script>
+</body>
+</html>
