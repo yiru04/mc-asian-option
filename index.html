@@ -116,7 +116,7 @@
 <div id="loadingOverlay">
   <div class="spinner"></div>
   <div class="ld-title">Fetching live market data…</div>
-  <div class="ld-sub">Pulling rolling 3-year history via Finnhub</div>
+  <div class="ld-sub">Pulling rolling 3-year daily history via Yahoo Finance</div>
 </div>
 <div class="wrap">
   <div class="hdr">
@@ -193,13 +193,12 @@ function getRollingThreeYearRange(){
   // "from" = first day of the month, 3 years + 1 month ago (buffer for full first month)
   const fromDate = new Date(Date.UTC(today.getUTCFullYear() - 3, today.getUTCMonth() - 1, 1));
 
-  // "to" = last moment of PREVIOUS month — so the current incomplete month is excluded
-  // e.g. if today is 2026-03-31, toDate = 2026-02-28 23:59:59
-  const toDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 0, 23, 59, 59));
+  // "to" = yesterday (most recent completed trading day)
+  const yesterday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - 1, 23, 59, 59));
 
   return {
     from: Math.floor(fromDate.getTime() / 1000),
-    to:   Math.floor(toDate.getTime()   / 1000)
+    to:   Math.floor(yesterday.getTime() / 1000)
   };
 }
 
@@ -225,7 +224,7 @@ function resampleMonthly(ts, closes){
 }
 
 function getHistoryCountText(count){
-  return `${count} monthly end-of-month closing prices · rolling 3-year window`;
+  return `${count} monthly end-of-month closing prices · daily data resampled · rolling 3-year window`;
 }
 
 async function apiGet(params2){
@@ -416,7 +415,7 @@ function runMC(){
   setTimeout(()=>{
     const a=DB[sel],c=cal(a.hist),S0=a.livePrice ?? a.hist[a.hist.length-1];
     const{K,T,nSteps,r}=params,σ=c.sigma,dt=T/nSteps,sqDt=Math.sqrt(dt),drift=r-0.5*σ*σ;
-    const NS=14,skip=Math.max(1,Math.floor(nSteps/60));
+    const NS=Math.min(80,params.nPaths),skip=Math.max(1,Math.floor(nSteps/60));
     const rawP=Array.from({length:NS},()=>[{t:0,S:S0}]);
     let sumPV=0,sumPV2=0;const pays=[];
     for(let p=0;p<params.nPaths;p++){
