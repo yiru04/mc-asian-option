@@ -45,11 +45,11 @@ module.exports = async function handler(req, res) {
 
   try {
 
-    // ── CANDLE: Yahoo Finance monthly bars ───────────────────────────────────
+    // ── CANDLE: Yahoo Finance daily bars (resampled to monthly in client) ───
     if (type === "candle") {
       const yahooSym = YAHOO_SYM[sym] || sym;
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}` +
-                  `?interval=1mo&period1=${from}&period2=${to}&events=history`;
+                  `?interval=1d&period1=${from}&period2=${to}&events=history`;
       const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
       if (!r.ok) return res.status(200).json({ s: "no_data", error: `Yahoo HTTP ${r.status}` });
 
