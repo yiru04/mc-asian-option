@@ -189,12 +189,14 @@ function hideOverlay(){
 
 function getRollingThreeYearRange(){
   const today = new Date();
-  const toDate = new Date(today);
-  // go back 3 years + 1 extra month buffer so we always have a full first month
-  const fromDate = new Date(today);
-  fromDate.setFullYear(fromDate.getFullYear() - 3);
-  fromDate.setMonth(fromDate.getMonth() - 1);
-  fromDate.setDate(1);
+
+  // "from" = first day of the month, 3 years + 1 month ago (buffer for full first month)
+  const fromDate = new Date(Date.UTC(today.getUTCFullYear() - 3, today.getUTCMonth() - 1, 1));
+
+  // "to" = last moment of PREVIOUS month — so the current incomplete month is excluded
+  // e.g. if today is 2026-03-31, toDate = 2026-02-28 23:59:59
+  const toDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 0, 23, 59, 59));
+
   return {
     from: Math.floor(fromDate.getTime() / 1000),
     to:   Math.floor(toDate.getTime()   / 1000)
@@ -327,9 +329,11 @@ async function loadLiveData(){
   params.K = DB[sel].dK;
 
   const sl = MONTHS[0], el2 = MONTHS[MONTHS.length-1];
+  // Format today as e.g. "Mar 31, 2026"
+  const todayLabel = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
   document.getElementById("dataLabel").innerHTML = candleOk
-    ? `<span class="live-badge"><span class="live-dot"></span>Live</span> &nbsp;Finnhub &nbsp;·&nbsp; Monthly history ${sl} – ${el2} &nbsp;|&nbsp; Spot updated just now`
-    : `<span class="off-badge">Offline history</span> &nbsp;Static ${sl} – ${el2} &nbsp;|&nbsp; <span class="live-badge"><span class="live-dot"></span>Live spot</span> from Finnhub`;
+    ? `<span class="live-badge"><span class="live-dot"></span>Live</span> &nbsp;History ${sl} – ${el2} (月底收盤) &nbsp;·&nbsp; S₀ = 今日即時報價 (${todayLabel})`
+    : `<span class="off-badge">Offline history</span> &nbsp;Static ${sl} – ${el2} &nbsp;|&nbsp; <span class="live-badge"><span class="live-dot"></span>Live S₀</span> (${todayLabel})`;
 
   hideOverlay();
   render();
